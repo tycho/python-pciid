@@ -12,6 +12,7 @@ def test_sysfs_fake_tree(fake_sysfs, tmp_path):
     assert "0000:00:01.0" in devs
     assert "0000:65:00.0" in devs
     assert "0000:66:00.0" in devs
+    assert "0000:68:00.0" in devs
 
     # Bad device, unparsable vendor/device IDs
     assert "0000:67:00.0" not in devs
@@ -38,7 +39,7 @@ def test_sysfs_fake_tree(fake_sysfs, tmp_path):
     origin = devs["0000:65:00.0"]
     affected = {str(d.bdf) for d in enum.sbr_affected(devs, origin)}
     # Expect both children under the same parent
-    assert affected == {"0000:65:00.0", "0000:66:00.0"}
+    assert affected == {"0000:65:00.0", "0000:66:00.0", "0000:68:00.0"}
 
     assert enum.sbr_affected(devs, devs["0000:00:01.0"]) == []
 

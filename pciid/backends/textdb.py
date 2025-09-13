@@ -98,27 +98,17 @@ def _parse_pci_ids(path: str) -> Tuple[VendorDict, ClassDict]:
                         vendors[cur_vendor][1][-1][2].append((subven, subdev, name))
                     continue
 
-                if line.startswith("\t"):
-                    s = line.strip()
-                    tok = s.split(None, 1)
-                    dev = int(tok[0], 16)
-                    name = tok[1] if len(tok) > 1 else ""
-                    assert cur_vendor is not None
-                    vendors[cur_vendor][1].append((dev, name, []))
-                    cur_device = dev
-                    continue
+                # We already know the line starts with at least one \t
+                s = line.strip()
+                tok = s.split(None, 1)
+                dev = int(tok[0], 16)
+                name = tok[1] if len(tok) > 1 else ""
+                assert cur_vendor is not None
+                vendors[cur_vendor][1].append((dev, name, []))
+                cur_device = dev
+                continue
             else:
                 # Classes / subclasses / prog-if
-                if line.startswith("\t") and not line.startswith("\t\t"):
-                    s = line.strip()
-                    tok = s.split(None, 1)
-                    sub = int(tok[0], 16)
-                    name = tok[1] if len(tok) > 1 else ""
-                    assert cur_base is not None
-                    classes[cur_base][1][sub] = (name, {})
-                    cur_sub = sub
-                    continue
-
                 if line.startswith("\t\t"):
                     s = line.strip()
                     tok = s.split(None, 1)
@@ -128,6 +118,16 @@ def _parse_pci_ids(path: str) -> Tuple[VendorDict, ClassDict]:
                     assert cur_sub is not None
                     classes[cur_base][1][cur_sub][1][pi] = name
                     continue
+
+                # We already know the line starts with at least one \t
+                s = line.strip()
+                tok = s.split(None, 1)
+                sub = int(tok[0], 16)
+                name = tok[1] if len(tok) > 1 else ""
+                assert cur_base is not None
+                classes[cur_base][1][sub] = (name, {})
+                cur_sub = sub
+                continue
 
     return vendors, classes
 

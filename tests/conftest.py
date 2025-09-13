@@ -10,19 +10,72 @@ import pytest
 MINIMAL_PCI_IDS = """\
 8086  Intel Corporation
 \t1237  440FX - 82441FX PMC
+beef
+\tbabe Device Without Vendor Name
 10de  NVIDIA Corporation
+\t0020  NV4 [Riva TNT]
+\t\t1043 0200  V3400 TNT
+\t\t1048 0c18  Erazor II SGRAM
+\t\t1048 0c19  Erazor II
+\t\t1048 0c1b  Erazor II
+\t\t1048 0c1c  Erazor II
+\t\t1092 0550  Viper V550
+\t\t1092 0552  Viper V550
+\t\t1092 4804  Viper V550
+\t\t1092 4808  Viper V550
+\t\t1092 4810  Viper V550
+\t\t1092 4812  Viper V550
+\t\t1092 4815  Viper V550
+\t\t1092 4820  Viper V550 with TV out
+\t\t1092 4822  Viper V550
+\t\t1092 4904  Viper V550
+\t\t1092 4914  Viper V550
+\t\t1092 8225  Viper V550
+\t\t10b4 273d  Velocity 4400
+\t\t10b4 273e  Velocity 4400
+\t\t10b4 2740  Velocity 4400
+\t\t10de 0020  Riva TNT
+\t\t1102 1015  Graphics Blaster CT6710
+\t\t1102 1016  Graphics Blaster RIVA TNT
 \t1db6  GV100GL [Tesla V100 PCIe 32GB]
 \t1ba1  GP104M [GeForce GTX 1070 Mobile]
 \t\t1458 1651  GeForce GTX 1070 Max-Q
+\t\tbaad
 C 02  Network controller
 \t00  Ethernet controller
+\t01  Token ring network controller
+\t02  FDDI network controller
+\t03  ATM network controller
+\t04  ISDN controller
+\t05  WorldFip controller
+\t06  PICMG controller
+\t07  Infiniband controller
+\t08  Fabric controller
+\t80  Network controller
 C 03  Display controller
 \t00  VGA compatible controller
 \t\t00  VGA controller
 \t\t01  8514 controller
+\t\t02
+C 0c  Serial bus controller
+\t00  FireWire (IEEE 1394)
+\t\t00  Generic
+\t\t10  OHCI
+\t01  ACCESS Bus
+\t02  SSA
+\t03  USB controller
+\t\t00  UHCI
+\t\t10  OHCI
+\t\t20  EHCI
+\t\t30  XHCI
+\t\t40  USB4 Host Interface
+\t\t80  Unspecified
+\t\tfe  USB Device
 \t01  XGA compatible controller
 \t02  3D controller
 \t80  Display controller
+C 04
+\t01
 C 06  Bridge
 \t04  PCI bridge
 """
@@ -165,11 +218,17 @@ def fake_sysfs(tmp_path: Path):
     corrupt_bdf = "0000:00:01.0/0000:67:00.0"
     corrupt_real = make_device_dir_badhex(real, corrupt_bdf)
 
+    weird_vendor_bdf = "0000:00:01.0/0000:68:00.0"
+    weird_vendor_real = make_device_dir(
+        real, weird_vendor_bdf, vendor=0xbeef, device=0xbabe, klass24=0x020000
+    )
+
     # Symlinks in the "devices" directory (what SysfsEnumerator.iterdir() reads)
     (root / "0000:00:01.0").symlink_to(parent_real, target_is_directory=True)
     (root / "0000:65:00.0").symlink_to(child_real, target_is_directory=True)
     (root / "0000:66:00.0").symlink_to(sib_real, target_is_directory=True)
     (root / "0000:67:00.0").symlink_to(corrupt_real, target_is_directory=True)
+    (root / "0000:68:00.0").symlink_to(weird_vendor_real, target_is_directory=True)
 
     # Dummy to exercise non-bdf check
     (root / "dummy").mkdir()
