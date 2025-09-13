@@ -1,3 +1,6 @@
+[![tests workflow](https://github.com/tycho/python-pciid/actions/workflows/tests.yml/badge.svg)](https://github.com/tycho/python-pciid/actions/workflows/tests.yml)
+[![codecov](https://codecov.io/github/tycho/python-pciid/branch/master/graph/badge.svg?token=P8FBPQMY3O)](https://codecov.io/github/tycho/python-pciid)
+
 # pciid
 
 Fast, boring PCI ID lookups for Python.  
