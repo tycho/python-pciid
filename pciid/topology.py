@@ -27,7 +27,7 @@ def dumps_devices_and_edges(devs: Dict[str, PciDevice]) -> str:
             "parent_bdf": d.parent_bdf,
         }
         if d.parent_bdf:
-            edges.append([d.parent_bdf, bdf])
+            edges.append((str(d.parent_bdf), str(bdf)))
             has_parent.add(bdf)
 
     roots = [b for b in nodes.keys() if b not in has_parent]

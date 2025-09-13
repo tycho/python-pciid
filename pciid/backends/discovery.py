@@ -5,7 +5,9 @@ import weakref
 from pathlib import Path
 from typing import Callable, Iterable, List, Optional, Tuple
 from importlib import resources
-from ..api import PciDb, PciDbBinary, PciDbText
+from ..types import PciDb
+from .bindb import PciDbBinary
+from .textdb import PciDbText
 from ..data import (
     bin_resource,
     text_resource,
@@ -63,7 +65,9 @@ def _resolve_candidates(
     # ENV overrides (bin preferred)
     if env_bin:
 
-        def open_env_bin(p=env_bin) -> PciDb:
+        def open_env_bin(p: Optional[str] = env_bin) -> PciDb:
+            if p is None:
+                raise ValueError("Path cannot be None")
             if not _is_bin_path(p):
                 raise ValueError(f"PCIID_BIN is not a valid binary DB: {p}")
             return PciDbBinary(p)
@@ -72,7 +76,9 @@ def _resolve_candidates(
 
     if env_text:
 
-        def open_env_text(p=env_text) -> PciDb:
+        def open_env_text(p: Optional[str] = env_text) -> PciDb:
+            if p is None:
+                raise ValueError("Path cannot be None")
             if not Path(p).exists():
                 raise FileNotFoundError(f"PCIID_TEXT not found: {p}")
             return PciDbText(p)
@@ -80,12 +86,12 @@ def _resolve_candidates(
         cands.append(Candidate("env-text", env_text, open_env_text))
 
     # System paths: bin → (later) text
-    def open_sys_bin(p=system_bin) -> PciDb:
+    def open_sys_bin(p: str = system_bin) -> PciDb:
         if not Path(p).exists() or not _is_bin_path(p):
             raise FileNotFoundError(p)
         return PciDbBinary(p)
 
-    def open_sys_text(p=system_text) -> PciDb:
+    def open_sys_text(p: str = system_text) -> PciDb:
         if not Path(p).exists():
             raise FileNotFoundError(p)
         return PciDbText(p)
@@ -106,7 +112,7 @@ def _resolve_candidates(
             finally:
                 cm.__exit__(None, None, None)
 
-        db.close = _close_and_release  # type: ignore[assignment]
+        db.close = _close_and_release  # type: ignore[method-assign]
 
         weakref.finalize(db, cm.__exit__, None, None, None)
         return db
@@ -125,7 +131,7 @@ def _resolve_candidates(
             finally:
                 cm.__exit__(None, None, None)
 
-        db.close = _close_and_release  # type: ignore[assignment]
+        db.close = _close_and_release  # type: ignore[method-assign]
 
         weakref.finalize(db, cm.__exit__, None, None, None)
         return db

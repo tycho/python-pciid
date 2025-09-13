@@ -77,7 +77,7 @@ class CustomBuildHook(BuildHookInterface):
         # 2) convert text -> bin in the *source tree*
         converter = _load_converter(root)
         args = types.SimpleNamespace(
-            input=str(text_out), output=str(bin_out), no_compress=False
+            input_path=str(text_out), output_path=str(bin_out), no_compress=False
         )
         converter.build(args)
 

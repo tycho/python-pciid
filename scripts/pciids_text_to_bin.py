@@ -1,10 +1,24 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import sys, struct, zlib, argparse
+from dataclasses import dataclass
+from typing import BinaryIO, Dict, List, Optional, Set, Tuple
 from collections import defaultdict
+
+Subvendor = Tuple[int, int, str]
+Device = Tuple[int, str, List[Subvendor]]
+VendorDict = Dict[int, Tuple[str, List[Device]]]
+ClassDict = Dict[int, Tuple[str, Dict[int, Tuple[str, Dict[int, str]]]]]
 
 MAGIC = 0x42494350  # 'PCIB'
 VERSION = 1
+
+
+@dataclass
+class ProgramArgs:
+    input_path: str
+    output_path: str
+    no_compress: bool
 
 
 # ------------ String pool (two-phase: collect -> finalize -> write) ------------
@@ -14,21 +28,23 @@ class StringPool:
     IDs are stable after finalize(); we DO NOT reorder after that.
     """
 
-    def __init__(self, block_stride=32, compress_level=6):
-        self._seen = set()
-        self._strings = []  # temporary (unique strings, insertion order)
+    def __init__(
+        self, block_stride: int = 32, compress_level: Optional[int] = 6
+    ) -> None:
+        self._seen: Set[str] = set()
+        self._strings: List[str] = []  # temporary (unique strings, insertion order)
         self._final = False
         self.block_stride = block_stride
         self.compress_level = compress_level
-        self.id_of = {}  # str -> id (after finalize)
-        self.vec = []  # id -> str (after finalize)
+        self.id_of: Dict[str, int] = {}  # str -> id (after finalize)
+        self.vec: List[str] = []  # id -> str (after finalize)
 
     def add(self, s: str) -> None:
         if s not in self._seen:
             self._seen.add(s)
             self._strings.append(s)
 
-    def finalize(self, sort="lex"):
+    def finalize(self, sort: str = "lex") -> None:
         assert not self._final
         if sort == "lex":
             self.vec = sorted(self._strings)
@@ -38,9 +54,9 @@ class StringPool:
             self.id_of[s] = i
         self._final = True
 
-    def _emit_block(self, items):
+    def _emit_block(self, items: List[str]) -> bytes:
         # Block front-coding; first in block is full, others are prefix-delta vs block base
-        payload = bytearray()
+        payload = bytes()
         payload += struct.pack("<H", self.block_stride)
         base = None
         for i, s in enumerate(items):
@@ -65,7 +81,9 @@ class StringPool:
             payload = zlib.compress(bytes(payload), self.compress_level)
         return payload
 
-    def write(self, f, base_offset):
+    def write(
+        self, f: BinaryIO, base_offset: int
+    ) -> Tuple[int, int, int, int, int, int]:
         assert self._final
         # Build blocks
         block_offsets = []
@@ -105,14 +123,14 @@ class StringPool:
 
 
 # ------------ Robust pci.ids parser (vendors/devices/subsystems + classes) ------------
-def parse_pci_ids(path):
+def parse_pci_ids(path: str) -> Tuple[VendorDict, ClassDict]:
     """
     Returns:
       vendors: dict[vendor_id] = (vendor_name: str, devices: list[(dev_id, dev_name, subs: list[(subven, subdev, name)])])
       classes: dict[base] = (base_name: str, subclasses: dict[sub] = (sub_name: str, progifs: dict[pi] = name))
     """
-    vendors = {}
-    classes = {}
+    vendors: VendorDict = {}
+    classes: ClassDict = {}
     in_classes = False
 
     cur_vendor = None
@@ -133,7 +151,7 @@ def parse_pci_ids(path):
                 if len(parts) >= 3 and len(parts[1]) <= 2:
                     base = int(parts[1], 16)
                     name = parts[2]
-                    classes[base] = [name, {}]
+                    classes[base] = (name, {})
                     cur_base = base
                     cur_sub = None
                 continue
@@ -146,7 +164,7 @@ def parse_pci_ids(path):
                     if len(tok[0]) == 4:
                         ven = int(tok[0], 16)
                         name = tok[1] if len(tok) > 1 else ""
-                        vendors[ven] = [name, []]
+                        vendors[ven] = (name, [])
                         cur_vendor, cur_device = ven, None
                         continue
 
@@ -156,7 +174,8 @@ def parse_pci_ids(path):
                     tok = s.split(None, 1)
                     dev = int(tok[0], 16)
                     name = tok[1] if len(tok) > 1 else ""
-                    vendors[cur_vendor][1].append([dev, name, []])
+                    assert cur_vendor is not None
+                    vendors[cur_vendor][1].append((dev, name, []))
                     cur_device = dev
                     continue
 
@@ -169,6 +188,7 @@ def parse_pci_ids(path):
                         subven = int(tok[0], 16)
                         subdev = int(tok[1], 16)
                         name = tok[2] if len(tok) > 2 else ""
+                        assert cur_vendor is not None
                         vendors[cur_vendor][1][-1][2].append((subven, subdev, name))
                     continue
 
@@ -180,7 +200,7 @@ def parse_pci_ids(path):
                     if len(tok) >= 2 and len(tok[0]) <= 2:
                         base = int(tok[0], 16)
                         name = tok[1]
-                        classes[base] = [name, {}]
+                        classes[base] = (name, {})
                         cur_base = base
                         cur_sub = None
                     continue
@@ -191,7 +211,8 @@ def parse_pci_ids(path):
                     tok = s.split(None, 1)
                     sub = int(tok[0], 16)
                     name = tok[1] if len(tok) > 1 else ""
-                    classes[cur_base][1][sub] = [name, {}]
+                    assert cur_base is not None
+                    classes[cur_base][1][sub] = (name, {})
                     cur_sub = sub
                     continue
 
@@ -201,6 +222,8 @@ def parse_pci_ids(path):
                     tok = s.split(None, 1)
                     pi = int(tok[0], 16)
                     name = tok[1] if len(tok) > 1 else ""
+                    assert cur_base is not None
+                    assert cur_sub is not None
                     classes[cur_base][1][cur_sub][1][pi] = name
                     continue
 
@@ -219,18 +242,18 @@ SubclassRow = struct.Struct(
 ProgIfRow = struct.Struct("<B I")  # prog_if, name_id
 
 
-def build(args):
-    vendors, classes = parse_pci_ids(args.input)
+def build(args: ProgramArgs) -> None:
+    vendors, classes = parse_pci_ids(args.input_path)
 
     # Collect all strings first (two-phase)
     sp = StringPool(block_stride=32, compress_level=(None if args.no_compress else 6))
 
-    def add_all_strings():
+    def add_all_strings() -> None:
         for ven_id, (vname, devs) in vendors.items():
             sp.add(vname)
-            for dev_id, dname, subs in devs:
+            for dev_id, dname, sublist in devs:
                 sp.add(dname)
-                for sv, sd, sname in subs:
+                for sv, sd, sname in sublist:
                     sp.add(sname)
         for base, (bname, subs) in classes.items():
             sp.add(bname)
@@ -243,18 +266,18 @@ def build(args):
     sp.finalize(sort="lex")  # lexicographic improves prefix sharing
 
     # Flatten structures → pack with finalized string IDs
-    vendor_rows = []
-    device_rows = []
-    subsys_rows = []
+    vendor_rows: List[bytes] = []
+    device_rows: List[bytes] = []
+    subsys_rows: List[bytes] = []
 
     for ven_id in sorted(vendors.keys()):
         vname, devs = vendors[ven_id]
         devs.sort(key=lambda d: d[0])
         dev_start = len(device_rows)
-        for dev_id, dname, subs in devs:
-            subs.sort(key=lambda x: (x[0], x[1]))
+        for dev_id, dname, sublist in devs:
+            sublist.sort(key=lambda x: (x[0], x[1]))
             sub_start = len(subsys_rows)
-            for sv, sd, sname in subs:
+            for sv, sd, sname in sublist:
                 subsys_rows.append(SubsysRow.pack(sv, sd, sp.id_of[sname]))
             device_rows.append(
                 DeviceRow.pack(
@@ -272,8 +295,8 @@ def build(args):
     for base, (bname, _) in classes.items():
         class_base[base] = sp.id_of[bname]
 
-    subclass_rows = []
-    prog_if_rows = []
+    subclass_rows: List[bytes] = []
+    prog_if_rows: List[bytes] = []
     for base in sorted(classes.keys()):
         _, subs = classes[base]
         for sub in sorted(subs.keys()):
@@ -285,7 +308,7 @@ def build(args):
             key = ((base & 0xFF) << 8) | (sub & 0xFF)
             subclass_rows.append(SubclassRow.pack(key, sp.id_of[sname], start, count))
 
-    with open(args.output, "wb") as f:
+    with open(args.output_path, "wb") as f:
         # Header placeholder
         f.write(b"\x00" * struct.calcsize(HEADER_FMT))
 
@@ -364,12 +387,21 @@ def build(args):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("-i", "--input", help="pci.ids text path", required=True)
-    ap.add_argument("-o", "--output", help="pci.ids binary output path", required=True)
+    ap.add_argument(
+        "-i", "--input", dest="input_path", help="pci.ids text path", required=True
+    )
+    ap.add_argument(
+        "-o",
+        "--output",
+        dest="output_path",
+        help="pci.ids binary output path",
+        required=True,
+    )
     ap.add_argument(
         "--no-compress",
+        dest="no_compress",
         action="store_true",
         help="disable zlib compression of string blocks",
     )
-    args = ap.parse_args()
+    args = ProgramArgs(**vars(ap.parse_args()))
     build(args)

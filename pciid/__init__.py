@@ -17,7 +17,7 @@ try:
     from importlib.metadata import version, PackageNotFoundError
 except Exception:  # pragma: no cover
     version = None  # type: ignore[assignment]
-    PackageNotFoundError = Exception  # type: ignore[misc]
+    PackageNotFoundError = Exception  # type: ignore[assignment, misc]
 
 try:  # pragma: no cover
     __version__ = version("pciid")  # the distribution name you’ll publish under
@@ -25,7 +25,9 @@ except (PackageNotFoundError, Exception):  # pragma: no cover
     __version__ = "0.0.0.dev0"
 
 # Public API re-exports
-from .api import PciDb, PciDbText, PciDbBinary, open_db
+from .api import PciDb, open_db
+from .backends.bindb import PciDbBinary
+from .backends.textdb import PciDbText
 from .sysfs import SysfsEnumerator, PciAddress, PciDevice
 
 __all__ = [

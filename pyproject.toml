@@ -7,7 +7,7 @@ name = "pciid"
 dynamic = ["version"]
 description = "PCI ID database readers (text/binary) with Linux sysfs enumeration and topology helpers"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [
 	{ name = "Steven Noonan", email = "steven@uplinklabs.net" }
@@ -21,7 +21,6 @@ classifiers = [
   "Operating System :: POSIX :: Linux",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",

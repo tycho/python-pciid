@@ -8,15 +8,12 @@ Comments are not preserved; ordering matches the binary's sorted order.
 import sys
 import argparse
 import bisect
+from typing import TextIO, Tuple
 
-from pciids_bin import (
-    PciIds,
-    SubclassRow,
-    ProgIfRow,
-)  # uses internal structs for efficient iteration
+from pciid.backends.bindb import PciDbBinary, SubclassRow, ProgIfRow
 
 
-def dump_text(pci: PciIds, out):
+def dump_text(pci: PciDbBinary, out: TextIO) -> None:
     w = out.write
 
     # --- Vendors / Devices / Subsystems ---
@@ -39,9 +36,11 @@ def dump_text(pci: PciIds, out):
     # Print each base class that exists, then its subclasses and prog-if entries.
     # subclass_keys are sorted by key=(base<<8)|sub; use range search per base.
     subclass_keys = pci._subclass_keys
-    get_subrow = lambda idx: SubclassRow.unpack_from(
-        pci.mm, pci._subclass_off + idx * SubclassRow.size
-    )
+
+    def get_subrow(idx: int) -> Tuple[int, int, int, int]:
+        return SubclassRow.unpack_from(
+            pci.mm, pci._subclass_off + idx * SubclassRow.size
+        )
 
     for base in range(256):
         # base class name (0 means absent)
@@ -74,7 +73,7 @@ def dump_text(pci: PciIds, out):
                 w(f"\t\t{pi:02x}  {piname}\n")
 
 
-def main():
+def main() -> None:
     ap = argparse.ArgumentParser(
         description="Reconstruct plaintext pci.ids from pci.ids.bin"
     )
@@ -90,7 +89,7 @@ def main():
     )
     args = ap.parse_args()
 
-    pci = PciIds(args.input)
+    pci = PciDbBinary(args.input)
     try:
         out = (
             sys.stdout

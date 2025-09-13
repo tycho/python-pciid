@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import sys, argparse, shlex
-from typing import Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 import pciid
 
 
@@ -14,7 +14,7 @@ def parse_hex(s: str) -> Optional[int]:
         return None
 
 
-def parse_lspci_mm_line(line: str):
+def parse_lspci_mm_line(line: str) -> Optional[Dict[str, Any]]:
     """
     Parses one line of `lspci -nD -mm` (machine-readable).
     Format (common case):
@@ -100,7 +100,7 @@ def class_name(
     return pci.get_class_name(base, sub, None) or pci.get_class_name(base, None, None)
 
 
-def make_modalias(row: dict) -> str:
+def make_modalias(row: Dict[str, Any]) -> str:
     """pci:v%08X d%08X sv%08X sd%08X bc%02X sc%02X i%02X (kernel format)"""
     ven = row.get("vendor") or 0
     dev = row.get("device") or 0
@@ -115,7 +115,9 @@ def make_modalias(row: dict) -> str:
     return f"pci:v{ven:08X}d{dev:08X}sv{subv:08X}sd{subd:08X}bc{base:02X}sc{sub:02X}i{pi:02X}"
 
 
-def describe_row(pci: pciid.PciDb, row: dict, append_modalias: bool = False) -> str:
+def describe_row(
+    pci: pciid.PciDb, row: Dict[str, Any], append_modalias: bool = False
+) -> str:
     ven = row["vendor"]
     dev = row["device"]
     subv = row["subvendor"]
@@ -175,7 +177,7 @@ def describe_row(pci: pciid.PciDb, row: dict, append_modalias: bool = False) -> 
     return "  ::  ".join(parts)
 
 
-def main():
+def main() -> None:
     ap = argparse.ArgumentParser(description="Probe lspci -nD -mm against pciids_bin")
     ap.add_argument("--db", default=None, help="path to pci.ids.bin")
     ap.add_argument(

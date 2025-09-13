@@ -11,8 +11,13 @@ from typing import Optional, Dict, List, Tuple
 from array import array
 import bisect
 
+Subvendor = Tuple[int, int, str]
+Device = Tuple[int, str, List[Subvendor]]
+VendorDict = Dict[int, Tuple[str, List[Device]]]
+ClassDict = Dict[int, Tuple[str, Dict[int, Tuple[str, Dict[int, str]]]]]
 
-def _clamp(x, low, high):
+
+def _clamp(x: int, low: int, high: int) -> int:
     return max(low, min(x, high))
 
 
@@ -20,7 +25,7 @@ def _clamp(x, low, high):
 class _StringPool:
     __slots__ = ("_id_of", "vec")
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._id_of: Dict[str, int] = {}
         self.vec: List[str] = []
 
@@ -38,14 +43,14 @@ class _StringPool:
 
 
 # ---------- Parser for plaintext pci.ids ----------
-def _parse_pci_ids(path: str):
+def _parse_pci_ids(path: str) -> Tuple[VendorDict, ClassDict]:
     """
     Returns:
       vendors: dict[vendor_id] = (vendor_name, list[(dev_id, dev_name, list[(subven, subdev, subname)])])
       classes: dict[base] = (base_name, dict[sub] = (sub_name, dict[prog_if] = prog_if_name))
     """
-    vendors: Dict[int, Tuple[str, List]] = {}
-    classes: Dict[int, Tuple[str, Dict[int, Tuple[str, Dict[int, str]]]]] = {}
+    vendors: VendorDict = {}
+    classes: ClassDict = {}
 
     in_classes = False
     cur_vendor: Optional[int] = None
@@ -65,7 +70,7 @@ def _parse_pci_ids(path: str):
                 if len(parts) >= 3:
                     base = int(parts[1], 16)
                     name = parts[2]
-                    classes[base] = [name, {}]
+                    classes[base] = (name, {})
                     cur_base = base
                     cur_sub = None
                 continue
@@ -77,7 +82,7 @@ def _parse_pci_ids(path: str):
                     if len(tok) >= 1 and len(tok[0]) == 4:  # vendor id
                         ven = int(tok[0], 16)
                         name = tok[1] if len(tok) > 1 else ""
-                        vendors[ven] = [name, []]
+                        vendors[ven] = (name, [])
                         cur_vendor, cur_device = ven, None
                     continue
 
@@ -89,6 +94,7 @@ def _parse_pci_ids(path: str):
                         subven = int(tok[0], 16)
                         subdev = int(tok[1], 16)
                         name = tok[2] if len(tok) > 2 else ""
+                        assert cur_vendor is not None
                         vendors[cur_vendor][1][-1][2].append((subven, subdev, name))
                     continue
 
@@ -97,7 +103,8 @@ def _parse_pci_ids(path: str):
                     tok = s.split(None, 1)
                     dev = int(tok[0], 16)
                     name = tok[1] if len(tok) > 1 else ""
-                    vendors[cur_vendor][1].append([dev, name, []])
+                    assert cur_vendor is not None
+                    vendors[cur_vendor][1].append((dev, name, []))
                     cur_device = dev
                     continue
             else:
@@ -107,7 +114,8 @@ def _parse_pci_ids(path: str):
                     tok = s.split(None, 1)
                     sub = int(tok[0], 16)
                     name = tok[1] if len(tok) > 1 else ""
-                    classes[cur_base][1][sub] = [name, {}]
+                    assert cur_base is not None
+                    classes[cur_base][1][sub] = (name, {})
                     cur_sub = sub
                     continue
 
@@ -116,6 +124,8 @@ def _parse_pci_ids(path: str):
                     tok = s.split(None, 1)
                     pi = int(tok[0], 16)
                     name = tok[1] if len(tok) > 1 else ""
+                    assert cur_base is not None
+                    assert cur_sub is not None
                     classes[cur_base][1][cur_sub][1][pi] = name
                     continue
 
@@ -123,11 +133,7 @@ def _parse_pci_ids(path: str):
 
 
 # ---------- Loader building compact arrays ----------
-class PciIds:
-    """
-    In-memory pci.ids loader with compact arrays. Same API as pciids_bin.PciIds.
-    """
-
+class PciDbText:
     # Row layouts (kept implicit via parallel arrays):
     # Vendors: vendor_ids[H], vendor_name_sid[I], vendor_dev_start[I], vendor_dev_count[I]
     # Devices: device_ids[H], device_name_sid[I], dev_sub_start[I], dev_sub_count[I]
@@ -137,6 +143,9 @@ class PciIds:
     #          prog_if_vals[B], prog_if_name_sid[I]
 
     def __init__(self, pci_ids_path: str):
+        vendors: VendorDict
+        classes: ClassDict
+
         # Parse to high-level
         vendors, classes = _parse_pci_ids(pci_ids_path)
         if not vendors or not classes:
@@ -146,9 +155,9 @@ class PciIds:
         sp = _StringPool()
         for ven, (vname, devs) in vendors.items():
             sp.intern(vname)
-            for did, dname, subs in devs:
+            for did, dname, sublist in devs:
                 sp.intern(dname)
-                for sv, sd, sname in subs:
+                for sv, sd, sname in sublist:
                     sp.intern(sname)
         for base, (bname, subs) in classes.items():
             sp.intern(bname)
@@ -178,10 +187,10 @@ class PciIds:
             devs.sort(key=lambda d: d[0])
 
             dev_start = len(self.device_ids)
-            for dev_id, dname, subs in devs:
-                subs.sort(key=lambda x: (x[0], x[1]))
+            for dev_id, dname, sublist in devs:
+                sublist.sort(key=lambda x: (x[0], x[1]))
                 sub_start = len(self.subvendor_ids)
-                for sv, sd, sname in subs:
+                for sv, sd, sname in sublist:
                     self.subvendor_ids.append(sv & 0xFFFF)
                     self.subdevice_ids.append(sd & 0xFFFF)
                     self.subsys_name_sid.append(sp.intern(sname))
@@ -283,7 +292,7 @@ class PciIds:
             return -1
         return i
 
-    # ----- public API (matches pciids_bin.PciIds) -----
+    # ----- public API -----
     def get_vendor_name(self, vendor_id: int) -> Optional[str]:
         i = self._vendor_index(vendor_id)
         if i < 0:
@@ -371,6 +380,10 @@ class PciIds:
     def describe_device_best_effort(
         self, vendor_id: int, device_id: int, class_code_24bit: Optional[int]
     ) -> str:
+        dn: Optional[str]
+        vn: Optional[str]
+        cn: Optional[str]
+
         dn = self.get_device_name(vendor_id, device_id)
         if dn:
             vn = self.get_vendor_name(vendor_id) or f"0x{vendor_id:04x}"
@@ -381,6 +394,6 @@ class PciIds:
         class_part = cn if cn else "PCI device"
         return f"Unknown {vendor_part} {class_part} (0x{device_id:04x})"
 
-    def close(self):
+    def close(self) -> None:
         # nothing to release
         pass

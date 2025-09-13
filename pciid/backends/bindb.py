@@ -8,7 +8,7 @@
 #
 
 import mmap, struct, zlib, bisect
-from typing import Optional
+from typing import Dict, Optional, Tuple
 
 MAGIC = 0x42494350
 HEADER_FMT = "<IHH" + "I" * 26
@@ -19,11 +19,38 @@ SubclassRow = struct.Struct("<H I I I")
 ProgIfRow = struct.Struct("<B I")
 
 
-def _clamp(x, low, high):
+def _clamp(x: int, low: int, high: int) -> int:
     return max(low, min(x, high))
 
 
-class PciIds:
+class PciDbBinary:
+    str_dir_off: int
+    str_dir_len: int
+    str_blk_off: int
+    str_blk_len: int
+    vendors_off: int
+    vendors_len: int
+    devices_off: int
+    devices_len: int
+    subsys_off: int
+    subsys_len: int
+    class_base_off: int
+    class_base_len: int
+    subclass_off: int
+    subclass_len: int
+    prog_if_off: int
+    prog_if_len: int
+    misc_off: int
+    misc_len: int
+    r1_off: int
+    r1_len: int
+    r2_off: int
+    r2_len: int
+    r3_off: int
+    r3_len: int
+    r4_off: int
+    r4_len: int
+
     def __init__(self, path: str):
         self.f = open(path, "rb")
         self.mm = mmap.mmap(self.f.fileno(), 0, access=mmap.ACCESS_READ)
@@ -39,14 +66,14 @@ class PciIds:
                 "<" + "I" * self.block_count, self.mm, self.str_dir_off + 4
             )
         )
-        self._block_cache = {}
+        self._block_cache: Dict[int, bytes] = {}
 
-    def close(self):
+    def close(self) -> None:
         self.mm.close()
         self.f.close()
 
     # ----- header/indices -----
-    def _parse_header(self):
+    def _parse_header(self) -> None:
         tup = struct.unpack_from(HEADER_FMT, self.mm, 0)
         if tup[0] != MAGIC:
             raise ValueError("bad magic")
@@ -82,7 +109,7 @@ class PciIds:
         for i, n in enumerate(names):
             setattr(self, n, fields[i])
 
-    def _load_vendor_index(self):
+    def _load_vendor_index(self) -> None:
         n = self.vendors_len // VendorRow.size
         self._vendor_rows_off = self.vendors_off
         self._vendor_count = n
@@ -93,15 +120,15 @@ class PciIds:
             for i in range(n)
         ]
 
-    def _load_device_index(self):
+    def _load_device_index(self) -> None:
         self._device_rows_off = self.devices_off
         self._device_count = self.devices_len // DeviceRow.size
 
-    def _load_subsys_index(self):
+    def _load_subsys_index(self) -> None:
         self._subsys_off = self.subsys_off
         self._subsys_count = self.subsys_len // SubsysRow.size
 
-    def _load_class_indexes(self):
+    def _load_class_indexes(self) -> None:
         self._class_base_off = self.class_base_off
         self._subclass_off = self.subclass_off
         self._subclass_count = self.subclass_len // SubclassRow.size
@@ -114,7 +141,7 @@ class PciIds:
         self._prog_if_off = self.prog_if_off
 
     # ----- string decoding -----
-    def _load_block_payload(self, block_idx: int):
+    def _load_block_payload(self, block_idx: int) -> bytes:
         if block_idx in self._block_cache:
             return self._block_cache[block_idx]
         off = self.block_offsets[block_idx]
@@ -135,7 +162,7 @@ class PciIds:
         p = 0
         stride = struct.unpack_from("<H", payload, p)[0]
         p += 2
-        base = None
+        base: Optional[str] = None
         for i in range(index_in_block + 1):
             kind = struct.unpack_from("<H", payload, p)[0]
             p += 2
@@ -152,6 +179,7 @@ class PciIds:
                 p += 4
                 suf = payload[p : p + slen].decode("utf-8")
                 p += slen
+                assert base is not None
                 s = base[:pref] + suf
             if i == index_in_block:
                 return s
@@ -165,17 +193,17 @@ class PciIds:
         return self._decode_string_in_block(payload, idx)
 
     # ----- helpers to read rows -----
-    def _vendor_row_at(self, idx: int):
+    def _vendor_row_at(self, idx: int) -> Tuple[int, int, int, int]:
         return VendorRow.unpack_from(
             self.mm, self._vendor_rows_off + idx * VendorRow.size
         )
 
-    def _device_row_at(self, idx: int):
+    def _device_row_at(self, idx: int) -> Tuple[int, int, int, int]:
         return DeviceRow.unpack_from(
             self.mm, self._device_rows_off + idx * DeviceRow.size
         )
 
-    def _subsys_row_at(self, idx: int):
+    def _subsys_row_at(self, idx: int) -> Tuple[int, int, int]:
         return SubsysRow.unpack_from(self.mm, self._subsys_off + idx * SubsysRow.size)
 
     # ----- lookups -----
@@ -299,6 +327,10 @@ class PciIds:
     def describe_device_best_effort(
         self, vendor_id: int, device_id: int, class_code_24bit: Optional[int]
     ) -> str:
+        vn: Optional[str]
+        dn: Optional[str]
+        cn: Optional[str]
+
         # If exact vendor+device known, return "Vendor Device"
         dn = self.get_device_name(vendor_id, device_id)
         if dn:

@@ -4,10 +4,12 @@ from pathlib import Path
 from pciid.sysfs import SysfsEnumerator
 from pciid.topology import dumps_devices_and_edges, loads_devices_and_edges
 
+
 def test_unparented_device(tmp_path: Path):
     root = tmp_path / "devices"
     real = tmp_path / "real"
-    root.mkdir(); real.mkdir()
+    root.mkdir()
+    real.mkdir()
     # Real path NOT nested under a parent BDF => parent_bdf remains None
     real_dev = real / "0000:65:00.0"
     real_dev.mkdir(parents=True)

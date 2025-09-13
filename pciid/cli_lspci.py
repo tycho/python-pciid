@@ -1,22 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import os, sys, argparse
+from dataclasses import dataclass
 from typing import Tuple, Optional
 import pciid
 
 SYSFS_DEVICES_DEFAULT = "/sys/bus/pci/devices"
 
 
-def read_hex(path: str) -> Optional[int]:
-    try:
-        with open(path, "r", encoding="ascii", errors="ignore") as f:
-            s = f.read().strip()
-        if s.startswith("0x") or s.startswith("0X"):
-            return int(s, 16)
-        # modalias-like hex ints may appear without 0x (rare here)
-        return int(s, 16)
-    except (FileNotFoundError, PermissionError, ValueError):
-        return None
+@dataclass
+class ProgramArgs:
+    db_path: Optional[str]
+    sysfs_path: Optional[str]
 
 
 def format_line(
@@ -50,18 +45,9 @@ def format_line(
     return f"{sbdf} {cname} [{class16:04x}]: {rdesc} [{ven:04x}:{dev:04x}]{revdesc}"
 
 
-def main():
-    ap = argparse.ArgumentParser(
-        description="Minimal lspci -nnD clone via sysfs + pciids_bin"
-    )
-    ap.add_argument("--db", default=None, help="path to pci.ids.bin")
-    ap.add_argument(
-        "--sysfs", default=SYSFS_DEVICES_DEFAULT, help="path to /sys/bus/pci/devices"
-    )
-    args = ap.parse_args()
-
-    pci = pciid.open_db(args.db)
-    sysfs = pciid.SysfsEnumerator()
+def run(args: ProgramArgs) -> None:
+    pci = pciid.open_db(args.db_path)
+    sysfs = pciid.SysfsEnumerator(args.sysfs_path)
     devices = sysfs.scan()
 
     out_lines = []
@@ -85,5 +71,19 @@ def main():
     pci.close()
 
 
-if __name__ == "__main__":
+def main() -> None:  # pragma: no cover
+    ap = argparse.ArgumentParser(
+        description="Minimal lspci -nnD clone via sysfs + pciids_bin"
+    )
+    ap.add_argument("--db", dest="db_path", default=None, help="path to pci.ids.bin")
+    ap.add_argument(
+        "--sysfs",
+        dest="sysfs_path",
+        default=SYSFS_DEVICES_DEFAULT,
+        help="path to /sys/bus/pci/devices",
+    )
+    run(ProgramArgs(**vars(ap.parse_args())))
+
+
+if __name__ == "__main__":  # pragma: no cover
     main()

@@ -121,7 +121,7 @@ class SysfsEnumerator:
             except Exception:
                 pass
 
-            link = {}
+            link: Optional[Dict[str, str]] = {}
             for name2 in (
                 "current_link_speed",
                 "current_link_width",
@@ -130,6 +130,7 @@ class SysfsEnumerator:
             ):
                 p = d / name2
                 if p.exists():
+                    assert link is not None
                     link[name2] = p.read_text().strip()
             if not link:
                 link = None
@@ -159,11 +160,11 @@ class SysfsEnumerator:
             devices[str(bdf)] = dev
 
         # stitch topology (weakrefs)
-        for bdf, dev in devices.items():
-            if dev.parent_bdf and dev.parent_bdf in devices:
-                parent = devices[dev.parent_bdf]
-                dev._parent = weakref.ref(parent)
-                parent.children.append(weakref.ref(dev))
+        for ibdf, idev in devices.items():
+            if idev.parent_bdf and idev.parent_bdf in devices:
+                parent = devices[idev.parent_bdf]
+                idev._parent = weakref.ref(parent)
+                parent.children.append(weakref.ref(idev))
 
         return devices
 
