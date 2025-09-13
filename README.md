@@ -56,7 +56,8 @@ At runtime, `open_db()` tries (highest → lowest):
 Env knobs:
 
 * `PCIID_BIN`, `PCIID_TEXT` – explicit paths
-* `PCIID_NO_BUNDLED=1` – disable bundled fallback
+* `PCIID_NO_BUNDLED=1` – disable bundled `pci.ids` and `pci.ids.bin` files
+* `PCIID_NO_SYSTEM=1` – disable `hwdata` system file fallback
 
 *Build-time (wheel creation)*: the project prebakes `pci.ids` and `pci.ids.bin` into `pciid/data/`. If a system file isn’t available, it downloads from the official PCI IDs snapshot and converts it. Set `PCIID_FORCE_DOWNLOAD=1` or `PCIID_NO_NETWORK=1` for CI policy.
 
