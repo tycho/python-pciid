@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -euxo pipefail
+
 uv build --sdist
 
 # ensure dev deps are available for each ephemeral run
@@ -10,4 +12,5 @@ done
 
 uv run -p 3.13 --with coverage -m coverage combine
 uv run -p 3.13 --with coverage -m coverage report -m
-#uv run -p 3.13 --with coverage -m coverage html
+uv run -p 3.13 --with coverage -m coverage xml
+uv run -p 3.13 --with coverage -m coverage html
