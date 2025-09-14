@@ -20,23 +20,31 @@ def test_text_vs_bin_parity(pci_ids_text, pci_ids_bin):
     ) == dt.describe_device_best_effort(0x10DE, 0x1BA1, 0x030000)
 
     # Valid vendor + device, invalid subvendor
-    assert db.get_subsystem_name(0x10DE, 0x1BA1, 0x1043, 0x0020) == dt.get_subsystem_name(0x10DE, 0x1BA1, 0x1043, 0x0020)
-    assert db.get_subsystem_name(0x10DE, 0x1BA1, 0xffff, 0xffff) == dt.get_subsystem_name(0x10DE, 0x1BA1, 0xffff, 0xffff)
+    assert db.get_subsystem_name(
+        0x10DE, 0x1BA1, 0x1043, 0x0020
+    ) == dt.get_subsystem_name(0x10DE, 0x1BA1, 0x1043, 0x0020)
+    assert db.get_subsystem_name(
+        0x10DE, 0x1BA1, 0xFFFF, 0xFFFF
+    ) == dt.get_subsystem_name(0x10DE, 0x1BA1, 0xFFFF, 0xFFFF)
 
     # Large subvendor list checks
-    assert db.get_subsystem_name(0x10DE, 0x0020, 0x1043, 0x0200) == dt.get_subsystem_name(0x10DE, 0x0020, 0x1043, 0x0200)
-    assert db.get_subsystem_name(0x10DE, 0x0020, 0x1092, 0x8225) == dt.get_subsystem_name(0x10DE, 0x0020, 0x1092, 0x8225)
+    assert db.get_subsystem_name(
+        0x10DE, 0x0020, 0x1043, 0x0200
+    ) == dt.get_subsystem_name(0x10DE, 0x0020, 0x1043, 0x0200)
+    assert db.get_subsystem_name(
+        0x10DE, 0x0020, 0x1092, 0x8225
+    ) == dt.get_subsystem_name(0x10DE, 0x0020, 0x1092, 0x8225)
 
     # invalid device ids
-    assert db.get_device_name(0x10de, 0x0000) is None
-    assert db.get_device_name(0x10de, 0xffff) is None
-    assert db.get_subsystem_name(0x10de, 0x0000, 0x0000, 0x000) is None
-    assert db.get_subsystem_name(0x10de, 0xffff, 0x0000, 0x000) is None
+    assert db.get_device_name(0x10DE, 0x0000) is None
+    assert db.get_device_name(0x10DE, 0xFFFF) is None
+    assert db.get_subsystem_name(0x10DE, 0x0000, 0x0000, 0x000) is None
+    assert db.get_subsystem_name(0x10DE, 0xFFFF, 0x0000, 0x000) is None
 
     # classes
-    assert db.get_class_name(0xffff) is None
-    assert db.get_class_name(0xff) is None
-    assert db.get_class_name(0x1f) is None
+    assert db.get_class_name(0xFFFF) is None
+    assert db.get_class_name(0xFF) is None
+    assert db.get_class_name(0x1F) is None
     assert db.get_class_name(0x00) is None
     assert db.get_class_name(0x02, 0x00) == dt.get_class_name(0x02, 0x00)
     assert db.get_class_name_from_code(0x030000, 3) == dt.get_class_name_from_code(
@@ -49,10 +57,10 @@ def test_text_vs_bin_parity(pci_ids_text, pci_ids_bin):
     assert db.get_class_name(0x02, 0x80) == dt.get_class_name(0x02, 0x80)
 
     # Test prog_if lookups
-    assert db.get_class_name(0x0c, 0x03, 0xba) == dt.get_class_name(0x0c, 0x03, 0xba)
-    assert db.get_class_name(0x0c, 0x03, 0x00) == dt.get_class_name(0x0c, 0x03, 0x00)
-    assert db.get_class_name(0x0c, 0x03, 0x40) == dt.get_class_name(0x0c, 0x03, 0x40)
-    assert db.get_class_name(0x0c, 0x03, 0xff) == dt.get_class_name(0x0c, 0x03, 0xff)
+    assert db.get_class_name(0x0C, 0x03, 0xBA) == dt.get_class_name(0x0C, 0x03, 0xBA)
+    assert db.get_class_name(0x0C, 0x03, 0x00) == dt.get_class_name(0x0C, 0x03, 0x00)
+    assert db.get_class_name(0x0C, 0x03, 0x40) == dt.get_class_name(0x0C, 0x03, 0x40)
+    assert db.get_class_name(0x0C, 0x03, 0xFF) == dt.get_class_name(0x0C, 0x03, 0xFF)
 
     # deliberately missing
     assert db.describe_device_best_effort(

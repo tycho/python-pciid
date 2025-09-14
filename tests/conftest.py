@@ -195,7 +195,8 @@ def fake_sysfs(tmp_path: Path):
         klass24=0x060400,
         include_link_speed=False,
     )
-    (parent_real / "resource").write_text("""\
+    (parent_real / "resource").write_text(
+        """\
 0x00000000f9000000 0x00000000f9ffffff 0x0000000000040200
 0x00000000fa000000 0x00000000fa01ffff 0x0000000000040200
 0x000000000000c000 0x000000000000c07f 0x0000000000040101
@@ -209,7 +210,8 @@ def fake_sysfs(tmp_path: Path):
 0x0000000000000000 0x0000000000000000 0x0000000000000000
 0x0000000000000000 0x0000000000000000 0x0000000000000000
 0x0000000000000000 0x0000000000000000 0x0000000000000000
-""")
+"""
+    )
 
     # Child function 0000:65:00.0 under the parent path to encode parentage in resolved() path.
     child_bdf = "0000:00:01.0/0000:65:00.0"
@@ -223,7 +225,8 @@ def fake_sysfs(tmp_path: Path):
         driver="nvidia",
     )
 
-    (child_real / "resource").write_text("""\
+    (child_real / "resource").write_text(
+        """\
 0x00000000fb000000 0x00000000fbffffff 0x0000000000040200
 0x0000007000000000 0x00000077ffffffff 0x000000000014220c
 0x0000000000000000 0x0000000000000000 0x0000000000000000
@@ -237,7 +240,8 @@ def fake_sysfs(tmp_path: Path):
 0x0000000000000000 0x0000000000000000 0x0000000000000000
 0x0000000000000000 0x0000000000000000 0x0000000000000000
 0x0000000000000000 0x0000000000000000 0x0000000000000000
-""")
+"""
+    )
 
     # Grandchild 0000:66:00.0 under same parent (sibling of 65:00.0)
     sib_bdf = "0000:00:01.0/0000:66:00.0"
@@ -251,7 +255,7 @@ def fake_sysfs(tmp_path: Path):
 
     weird_vendor_bdf = "0000:00:01.0/0000:68:00.0"
     weird_vendor_real = make_device_dir(
-        real, weird_vendor_bdf, vendor=0xbeef, device=0xbabe, klass24=0x020000
+        real, weird_vendor_bdf, vendor=0xBEEF, device=0xBABE, klass24=0x020000
     )
 
     # Symlinks in the "devices" directory (what SysfsEnumerator.iterdir() reads)

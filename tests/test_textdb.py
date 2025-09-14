@@ -2,6 +2,7 @@
 from __future__ import annotations
 from pciid.api import PciDbText
 
+
 def test_textdb_known_lookups(pci_ids_text):
     db = PciDbText(str(pci_ids_text))
     assert db.get_vendor_name(0x8086) == "Intel Corporation"
@@ -9,11 +10,14 @@ def test_textdb_known_lookups(pci_ids_text):
     assert db.describe_device_best_effort(0x10DE, 0x1BA1, 0x030000)
 
     # Subsystem lookups
-    assert db.get_subsystem_name(0x10DE, 0x1BA1, 0x1458, 0x1651) == "GeForce GTX 1070 Max-Q"
+    assert (
+        db.get_subsystem_name(0x10DE, 0x1BA1, 0x1458, 0x1651)
+        == "GeForce GTX 1070 Max-Q"
+    )
 
     # Valid vendor + device, invalid subvendor
     assert db.get_subsystem_name(0x10DE, 0x1BA1, 0x1043, 0x0020) is None
-    assert db.get_subsystem_name(0x10DE, 0x1BA1, 0xffff, 0xffff) is None
+    assert db.get_subsystem_name(0x10DE, 0x1BA1, 0xFFFF, 0xFFFF) is None
 
     # Large subvendor list checks
     assert db.get_subsystem_name(0x10DE, 0x0020, 0x1043, 0x0200) == "V3400 TNT"
@@ -25,9 +29,9 @@ def test_textdb_known_lookups(pci_ids_text):
     assert db.get_class_name(0x02, 0x80) == "Network controller"
 
     # Test prog_if lookups
-    assert db.get_class_name(0x0c, 0x03, 0xba) == "USB controller"
-    assert db.get_class_name(0x0c, 0x03, 0x00) == "UHCI"
-    assert db.get_class_name(0x0c, 0x03, 0x40) == "USB4 Host Interface"
+    assert db.get_class_name(0x0C, 0x03, 0xBA) == "USB controller"
+    assert db.get_class_name(0x0C, 0x03, 0x00) == "UHCI"
+    assert db.get_class_name(0x0C, 0x03, 0x40) == "USB4 Host Interface"
 
     # VGA controller variants
     assert db.get_class_name_from_code(0x030000, 3) == "VGA controller"
@@ -44,15 +48,15 @@ def test_textdb_unknowns(pci_ids_text):
 
     # Deliberately missing
     assert db.describe_device_best_effort(0x10DE, 0x1234, 0x030000)
-    assert db.get_class_name(0xffff) is None
-    assert db.get_class_name(0xff) is None
-    assert db.get_class_name(0x1f) is None
+    assert db.get_class_name(0xFFFF) is None
+    assert db.get_class_name(0xFF) is None
+    assert db.get_class_name(0x1F) is None
     assert db.get_class_name(0x00) is None
     assert db.get_vendor_name(0x1234) is None
-    assert db.get_device_name(0x10de, 0x1234) is None
+    assert db.get_device_name(0x10DE, 0x1234) is None
     assert db.get_device_name(0x1234, 0x1234) is None
-    assert db.get_subsystem_name(0x10de, 0x1ba1, 0x1234, 0x1234) is None
-    assert db.get_subsystem_name(0x10de, 0x1234, 0x1234, 0x1234) is None
+    assert db.get_subsystem_name(0x10DE, 0x1BA1, 0x1234, 0x1234) is None
+    assert db.get_subsystem_name(0x10DE, 0x1234, 0x1234, 0x1234) is None
     assert db.get_subsystem_name(0x1234, 0x1234, 0x1234, 0x1234) is None
 
     # Best-effort description should fall back to "Unknown <vendor|hex> <class|PCI device>"
