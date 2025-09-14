@@ -2,7 +2,7 @@
 from __future__ import annotations
 import json
 from typing import Dict, List, Tuple
-from .sysfs import PciDevice, PciAddress
+from .sysfs import PciDevice, PciAddress, ResourceEntry
 
 # Existing: build_topology(...), to_json(), to_indented() ...
 
@@ -14,6 +14,9 @@ def dumps_devices_and_edges(devs: Dict[str, PciDevice]) -> str:
     has_parent = set()
 
     for bdf, d in devs.items():
+        resources = []
+        if d.resource:
+            resources = [r.to_dict() for r in d.resource]
         nodes[bdf] = {
             "class_code": f"0x{d.class_code:04x}",
             "vendor_id": f"0x{d.vendor_id:04x}",
@@ -22,6 +25,7 @@ def dumps_devices_and_edges(devs: Dict[str, PciDevice]) -> str:
             "subdevice_id": f"0x{d.subdevice_id:04x}",
             "revision": f"0x{d.revision:02x}",
             "driver": d.driver,
+            "resource": resources,
             "iommu_group": d.iommu_group,
             "link": d.link,
             "parent_bdf": d.parent_bdf,
@@ -45,6 +49,11 @@ def loads_devices_and_edges(s: str) -> Dict[str, PciDevice]:
     for bdf, n in nodes.items():
         dom, bus, devfunc = bdf.split(":")
         dev, func = devfunc.split(".")
+        resources = []
+        for res in n.get("resource", []):
+            resources.append(ResourceEntry(**res))
+        if not resources:
+            resources = None
         pd = PciDevice(
             bdf=PciAddress(int(dom, 16), int(bus, 16), int(dev, 16), int(func, 10)),
             vendor_id=int(n["vendor_id"], 16),
@@ -54,6 +63,7 @@ def loads_devices_and_edges(s: str) -> Dict[str, PciDevice]:
             class_code=int(n["class_code"], 16),
             revision=int(n["revision"], 16),
             driver=n.get("driver"),
+            resource=resources,
             iommu_group=n.get("iommu_group"),
             link=n.get("link"),
             parent_bdf=n.get("parent_bdf"),
