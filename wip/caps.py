@@ -239,7 +239,233 @@ class ParsedCapabilities:
 # =========================
 
 ClassicDecoders: Dict[int, Callable[[bytes, int], object]] = {}
-ExtDecoders: Dict[int, Callable[[bytes, int, int], object]] = {}
+ExtDecoders: Dict[int, Callable[[bytes, int], object]] ={}
+
+def decode_ext_generic(raw: bytes, ver: int):
+    return raw, None
+
+
+class AERUncorrectableError(enum.Flag):
+    TRAIN = 1 << 0
+    DLP = 1 << 4
+    SDES = 1 << 5
+    POISON_TLP = 1 << 12
+    FCP = 1 << 13
+    COMP_TIME = 1 << 14
+    COMP_ABORT = 1 << 15
+    UNX_COMP = 1 << 16
+    RX_OVER = 1 << 17
+    MALF_TLP = 1 << 18
+    ECRC = 1 << 19
+    UNSUP = 1 << 20
+    ACS_VIOL = 1 << 21
+    INTERNAL = 1 << 22
+    MC_BLOCKED_TLP = 1 << 23
+    ATOMICOP_EGRESS_BLOCKED = 1 << 24
+    TLP_PREFIX_BLOCKED = 1 << 25
+    POISONED_TLP_EGRESS = 1 << 26
+    DMWR_REQ_EGRESS_BLOCKED = 1 << 27
+    IDE_CHECK = 1 << 28
+    MISR_IDE_TLP = 1 << 29
+    PCRC_CHECK = 1 << 30
+    TLP_XLAT_EGRESS_BLOCKED = 1 << 31
+
+    def flag_char(self, bit: AERUncorrectableError) -> str:
+        return '+' if self & bit else '-'
+
+    @classmethod
+    def _missing_(cls, value):
+        # Allow any integer value, even with unknown bits
+        pseudo_member = object.__new__(cls)
+        pseudo_member._name_ = f"AERUncorrectableError({value})"
+        pseudo_member._value_ = value
+        return pseudo_member
+
+    def __str__(self) -> str:
+        formatted = (
+            f"DLP{self.flag_char(AERUncorrectableError.DLP)} "
+            f"SDES{self.flag_char(AERUncorrectableError.SDES)} "
+            f"TLP{self.flag_char(AERUncorrectableError.POISON_TLP)} "
+            f"FCP{self.flag_char(AERUncorrectableError.FCP)} "
+            f"CmpltTO{self.flag_char(AERUncorrectableError.COMP_TIME)} "
+            f"CmpltAbrt{self.flag_char(AERUncorrectableError.COMP_ABORT)} "
+            f"UnxCmplt{self.flag_char(AERUncorrectableError.UNX_COMP)} "
+            f"RxOF{self.flag_char(AERUncorrectableError.RX_OVER)} "
+            f"MalfTLP{self.flag_char(AERUncorrectableError.MALF_TLP)}\n\t\t\t"
+            f"ECRC{self.flag_char(AERUncorrectableError.ECRC)} "
+            f"UnsupReq{self.flag_char(AERUncorrectableError.UNSUP)} "
+            f"ACSViol{self.flag_char(AERUncorrectableError.ACS_VIOL)} "
+            f"UncorrIntErr{self.flag_char(AERUncorrectableError.INTERNAL)} "
+            f"BlockedTLP{self.flag_char(AERUncorrectableError.MC_BLOCKED_TLP)} "
+            f"AtomicOpBlocked{self.flag_char(AERUncorrectableError.ATOMICOP_EGRESS_BLOCKED)} "
+            f"TLPBlockedErr{self.flag_char(AERUncorrectableError.TLP_PREFIX_BLOCKED)}\n\t\t\t"
+            f"PoisonTLPBlocked{self.flag_char(AERUncorrectableError.POISONED_TLP_EGRESS)} "
+            f"DMWrReqBlocked{self.flag_char(AERUncorrectableError.DMWR_REQ_EGRESS_BLOCKED)} "
+            f"IDECheck{self.flag_char(AERUncorrectableError.IDE_CHECK)} "
+            f"MisIDETLP{self.flag_char(AERUncorrectableError.MISR_IDE_TLP)} "
+            f"PCRC_CHECK{self.flag_char(AERUncorrectableError.PCRC_CHECK)} "
+            f"TLPXlatBlocked{self.flag_char(AERUncorrectableError.TLP_XLAT_EGRESS_BLOCKED)}\n"
+        )
+        return formatted
+
+class AERCorrectableError(enum.Flag):
+    RCVR = 1 << 0
+    BAD_TLP = 1 << 6
+    BAD_DLLP = 1 << 7
+    REP_ROLL = 1 << 8
+    REP_TIMER = 1 << 12
+    REP_ANFE = 1 << 13
+    INTERNAL = 1 << 14
+    HDRLOG_OVER = 1 << 15
+
+    def flag_char(self, bit: AERCorrectableError) -> str:
+        return '+' if self & bit else '-'
+
+    @classmethod
+    def _missing_(cls, value):
+        # Allow any integer value, even with unknown bits
+        pseudo_member = object.__new__(cls)
+        pseudo_member._name_ = f"AERCorrectableError({value})"
+        pseudo_member._value_ = value
+        return pseudo_member
+
+    def __str__(self) -> str:
+        formatted = (
+            f"RxErr{self.flag_char(AERCorrectableError.RCVR)} "
+            f"BadTLP{self.flag_char(AERCorrectableError.BAD_TLP)} "
+            f"BadDLLP{self.flag_char(AERCorrectableError.BAD_DLLP)} "
+            f"Rollover{self.flag_char(AERCorrectableError.REP_ROLL)} "
+            f"Timeout{self.flag_char(AERCorrectableError.REP_TIMER)} "
+            f"AdvNonFatalErr{self.flag_char(AERCorrectableError.REP_ANFE)} "
+            f"CorrIntErr{self.flag_char(AERCorrectableError.INTERNAL)} "
+            f"HeaderOF{self.flag_char(AERCorrectableError.HDRLOG_OVER)}\n"
+        )
+        return formatted
+
+class AERCapability(enum.Flag):
+    ECRC_GENC = 1 << 5
+    ECRC_GENE = 1 << 6
+    ECRC_CHKC = 1 << 7
+    ECRC_CHKE = 1 << 8
+    MULT_HDRC = 1 << 9
+    MULT_HDRE = 1 << 10
+    TLP_PFX = 1 << 11
+    HDR_LOG = 1 << 12
+
+    def flag_char(self, bit: AERCapability) -> str:
+        return '+' if self & bit else '-'
+
+    @classmethod
+    def _missing_(cls, value):
+        # Allow any integer value, even with unknown bits
+        pseudo_member = object.__new__(cls)
+        pseudo_member._name_ = f"AERCapability({value})"
+        pseudo_member._value_ = value
+        return pseudo_member
+
+    @property
+    def first_error_pointer(self) -> int:
+        return self._value_ & 0x1F
+
+    def __str__(self) -> str:
+        formatted = (
+            f"First Error Pointer: {self.first_error_pointer:02x}, "
+            f"ECRCGenCap{self.flag_char(AERCapability.ECRC_GENC)} "
+            f"ECRCGenEn{self.flag_char(AERCapability.ECRC_GENE)} "
+            f"ECRCChkCap{self.flag_char(AERCapability.ECRC_CHKC)} "
+            f"ECRCChkEn{self.flag_char(AERCapability.ECRC_CHKE)}\n\t\t\t"
+            f"MultHdrRecCap{self.flag_char(AERCapability.MULT_HDRC)} "
+            f"MultHdrRecEn{self.flag_char(AERCapability.MULT_HDRE)} "
+            f"TLPPfxPres{self.flag_char(AERCapability.TLP_PFX)} "
+            f"HdrLogCap{self.flag_char(AERCapability.HDR_LOG)}\n"
+        )
+        return formatted
+
+@dataclass(frozen=True)
+class ExtCap_AER:
+    uncor_status_raw: int
+    uncor_mask_raw: int
+    uncor_severity_raw: int
+    cor_status_raw: int
+    cor_mask_raw: int
+    err_cap_raw: int
+    hdr_log: Tuple[int, int, int, int]
+
+    @property
+    def uncor_status(self) -> AERUncorrectableError:
+        return AERUncorrectableError(self.uncor_status_raw)
+
+    @property
+    def uncor_mask(self) -> AERUncorrectableError:
+        return AERUncorrectableError(self.uncor_mask_raw)
+
+    @property
+    def uncor_severity(self) -> AERUncorrectableError:
+        return AERUncorrectableError(self.uncor_severity_raw)
+
+    @property
+    def cor_status(self) -> AERCorrectableError:
+        return AERCorrectableError(self.cor_status_raw)
+
+    @property
+    def cor_mask(self) -> AERCorrectableError:
+        return AERCorrectableError(self.cor_mask_raw)
+
+    @property
+    def err_cap(self) -> AERCapability:
+        return AERCapability(self.err_cap_raw)
+
+    def __str__(self) -> str:
+        formatted = (
+            f"\t\tUESta:\t{str(self.uncor_status)}"
+            f"\t\tUEMsk:\t{str(self.uncor_mask)}"
+            f"\t\tUESvrt:\t{str(self.uncor_severity)}"
+            f"\t\tCESta:\t{str(self.cor_status)}"
+            f"\t\tCEMsk:\t{str(self.cor_mask)}"
+            f"\t\tAERCap:\t{str(self.err_cap)}"
+            f"\t\tHeaderLog: {self.hdr_log[0]:08x} {self.hdr_log[1]:08x} {self.hdr_log[2]:08x} {self.hdr_log[3]:08x}"
+        )
+        return formatted
+
+def decode_ext_aer(raw: bytes, ver: int):
+    uncor_status = _u32(raw, 4)
+    uncor_mask = _u32(raw, 8)
+    uncor_sever = _u32(raw, 12)
+    cor_status = _u32(raw, 16)
+    cor_mask = _u32(raw, 20)
+    err_cap = _u32(raw, 24)
+    hdr_log = (_u32(raw, 28), _u32(raw, 32), _u32(raw, 36), _u32(raw, 40))
+
+    decoded = ExtCap_AER(
+        uncor_status_raw=uncor_status,
+        uncor_mask_raw=uncor_mask,
+        uncor_severity_raw=uncor_sever,
+        cor_status_raw=cor_status,
+        cor_mask_raw=cor_mask,
+        err_cap_raw=err_cap,
+        hdr_log=hdr_log,
+    )
+
+    return raw, decoded
+ExtDecoders[PciExtCapID.AER] = decode_ext_aer
+
+@dataclass(frozen=True)
+class ExtCap_VNDR:
+    vid: int
+    rev: int
+    length: int
+
+def decode_ext_vndr(raw: bytes, ver: int):
+    PCI_EVNDR_HEADER = 4
+    hdr = _u32(raw, PCI_EVNDR_HEADER)
+    decoded = ExtCap_VNDR(
+        vid=((hdr >> 0) & 0xFFFF),
+        rev=((hdr >> 16) & 0xF),
+        length=((hdr >> 20) & 0xFFF)
+    )
+    return raw[:decoded.length], decoded
+ExtDecoders[PciExtCapID.VNDR] = decode_ext_vndr
+
 # Register future decoders like:
 # ClassicDecoders[PciCapID.MSI] = decode_msi
 # ExtDecoders[PciExtCapID.SRIOV] = decode_sriov
@@ -369,9 +595,15 @@ def _parse_ext_caps(cfg: bytes) -> List[ExtCapRecord]:
         hdr = _u32(cfg, off)
         if hdr == 0x00000000 or hdr == 0xFFFFFFFF:
             return (0, 0, 0)
+
+        # 16 bits for capability ID
         ext_id = hdr & 0xFFFF
-        ver = (hdr >> 16) & 0xF
-        nxt = (hdr >> 20) & 0xFFF
+
+        # 3 bits for version
+        ver = (hdr >> 16) & 0x7
+
+        # Bottom two bits have a reserved usage, and must be masked off
+        nxt = (hdr >> 20) & 0xFFC
 
         def ok(x: int) -> bool:
             return _valid_off(x) and (x != off)
@@ -422,6 +654,8 @@ def _parse_ext_caps(cfg: bytes) -> List[ExtCapRecord]:
         ext_id, ver, _ = nodes[start]
         end = boundaries[start]
         raw = cfg[start:end]
+        decoder = ExtDecoders.get(ext_id, decode_ext_generic)
+        raw, decoded = decoder(raw, ver)
         out.append(
             ExtCapRecord(
                 ext_id=ext_id,
@@ -429,7 +663,7 @@ def _parse_ext_caps(cfg: bytes) -> List[ExtCapRecord]:
                 version=ver,
                 offset=start,
                 raw=raw,
-                decoded=None,
+                decoded=decoded,
             )
         )
 
@@ -464,12 +698,12 @@ if __name__ == "__main__":
     dev = sys.argv[1]
     parsed = parse_pci_capabilities(dev)
 
-    print("Classic capabilities:")
     for c in parsed.classic:
         name = cap_long_name(c.cap_id_enum) if c.cap_id_enum else f"0x{c.cap_id:02x}"
-        print(f"  @0x{c.offset:02x}: {name}  (len={len(c.raw)})")
+        print(f"  Capabilities: [{c.offset:02x}]: {name}  (len={len(c.raw):x})")
 
-    print("Extended capabilities:")
     for e in parsed.extended:
         name = extcap_long_name(e.ext_id_enum) if e.ext_id_enum else f"0x{e.ext_id:04x}"
-        print(f"  @0x{e.offset:03x}: {name} v{e.version}  (len={len(e.raw)})")
+        print(f"  Capabilities: [{e.offset:03x} v{e.version}]: {name}  (len={len(e.raw):x})")
+        if e.decoded is not None:
+            print(e.decoded)
