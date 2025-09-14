@@ -71,6 +71,8 @@ def cap_long_name(capid: PciCapID) -> Optional[str]:
         return f"Unknown 0x{capid:04x}"
     return long
 
+def flag_char(flags: enum.Flag, bit: enum.Flag) -> str:
+    return '+' if flags & bit else '-'
 
 class PciExtCapID(enum.IntEnum):
     NULL           =  0x0000
@@ -212,8 +214,7 @@ class ClassicCapRecord:
     cap_id: int  # raw numeric ID (still provide the enum below)
     cap_id_enum: Optional[PciCapID]
     offset: int  # byte offset within config space
-    raw: bytes  # bytes from start of this cap up to start of next (or 0x100)
-    # Placeholders for future decoded form:
+    raw: bytes   # bytes from start of this cap up to start of next (or 0x100)
     decoded: Optional[object] = None
 
 
@@ -221,10 +222,9 @@ class ClassicCapRecord:
 class ExtCapRecord:
     ext_id: int  # raw numeric ID
     ext_id_enum: Optional[PciExtCapID]
-    version: int  # 0..F
+    version: int # 0..F
     offset: int  # byte offset (DWORD aligned)
-    raw: bytes  # bytes from this header up to next cap (or end)
-    # Placeholders for future decoded form:
+    raw: bytes   # bytes from this header up to next cap (or end)
     decoded: Optional[object] = None
 
 
@@ -238,11 +238,221 @@ class ParsedCapabilities:
 # Decoder registries (hooks)
 # =========================
 
-ClassicDecoders: Dict[int, Callable[[bytes, int], object]] = {}
-ExtDecoders: Dict[int, Callable[[bytes, int], object]] ={}
+DecodeResult = Tuple[bytes, object]
 
-def decode_ext_generic(raw: bytes, ver: int):
+ClassicDecoders: Dict[PciCapID, Callable[[bytes, int], DecodeResult]] = {}
+ExtDecoders: Dict[PciExtCapID, Callable[[bytes, int], DecodeResult]] = {}
+
+def decode_generic(raw: bytes, flags: int) -> DecodeResult:
     return raw, None
+
+def decode_ext_generic(raw: bytes, ver: int) -> DecodeResult:
+    return raw, None
+
+class PMFlags(enum.Flag):
+    PME_CLOCK = 1 << 3
+    DSI = 1 << 5
+    D1 = 1 << 9
+    D2 = 1 << 10
+    PME_D0 = 1 << 11
+    PME_D1 = 1 << 12
+    PME_D2 = 1 << 13
+    PME_D3_HOT = 1 << 14
+    PME_D3_COLD = 1 << 15
+
+    @classmethod
+    def _missing_(cls, value):
+        # Allow any integer value, even with unknown bits
+        pseudo_member = object.__new__(cls)
+        pseudo_member._name_ = f"PMFlags({value})"
+        pseudo_member._value_ = value
+        return pseudo_member
+
+class PMStatusFlags(enum.Flag):
+    NO_SOFT_RST = 1 << 3
+    PME_ENABLE = 1 << 8
+    PME_STATUS = 1 << 15
+
+    @classmethod
+    def _missing_(cls, value):
+        # Allow any integer value, even with unknown bits
+        pseudo_member = object.__new__(cls)
+        pseudo_member._name_ = f"PMStatusFlags({value})"
+        pseudo_member._value_ = value
+        return pseudo_member
+
+@dataclass(frozen=True)
+class PMStatus:
+    raw: int
+
+    @property
+    def flags(self) -> PMStatusFlags:
+        return PMStatusFlags(self.raw)
+
+    @property
+    def power_state(self) -> int:
+        # D0, D1 or D2
+        return self.raw & 0x3
+
+    @property
+    def dsel(self) -> int:
+        return (self.raw & 0x1e00) >> 9
+
+    @property
+    def dscale(self) -> int:
+        return (self.raw & 0x6000) >> 13
+
+@dataclass(frozen=True)
+class Cap_PM:
+    version: int
+    flags_raw: int
+    status: PMStatus
+    aux_current: int # mA
+    bridge_flags: int
+
+    @property
+    def has_details(self): return True
+
+    @property
+    def flags(self) -> PMFlags:
+        return PMFlags(self.flags_raw)
+
+    @property
+    def name(self) -> str:
+        return f"Power Management version {self.version}"
+
+    def __str__(self) -> str:
+        flags = self.flags
+        status_flags = self.status.flags
+
+        formatted = (
+            f"\t\tFlags: "
+            f"PMEClk{flag_char(flags, PMFlags.PME_CLOCK)} "
+            f"DSI{flag_char(flags, PMFlags.DSI)} "
+            f"D1{flag_char(flags, PMFlags.D1)} "
+            f"D2{flag_char(flags, PMFlags.D2)} "
+            f"AuxCurrent={self.aux_current}mA "
+            f"PME("
+            f"D0{flag_char(flags, PMFlags.PME_D0)},"
+            f"D1{flag_char(flags, PMFlags.PME_D1)},"
+            f"D2{flag_char(flags, PMFlags.PME_D2)},"
+            f"D3hot{flag_char(flags, PMFlags.PME_D3_HOT)},"
+            f"D3cold{flag_char(flags, PMFlags.PME_D3_COLD)})\n"
+            f"\t\tStatus: "
+            f"D{self.status.power_state} "
+            f"NoSoftRst{flag_char(status_flags, PMStatusFlags.NO_SOFT_RST)} "
+            f"PME-Enable{flag_char(status_flags, PMStatusFlags.PME_ENABLE)} "
+            f"DSel={self.status.dsel} "
+            f"DScale={self.status.dscale} "
+            f"PME{flag_char(status_flags, PMStatusFlags.PME_STATUS)}"
+        )
+        return formatted
+
+def decode_pm(raw: bytes, flags: int) -> DecodeResult:
+    pm_aux_current = (0, 55, 100, 160, 220, 270, 320, 375)
+    version = flags & 0x7
+    aux_current = (flags & 0x1c0) >> 6
+
+    status = _u16(raw, 4)
+    bridge_flags = _u8(raw, 6)
+
+    pm = Cap_PM(
+        version=version,
+        flags_raw=flags,
+        aux_current=pm_aux_current[aux_current],
+        status=PMStatus(raw=status),
+        bridge_flags=bridge_flags
+    )
+    return raw, pm
+ClassicDecoders[PciCapID.PM] = decode_pm
+
+class MSIFlags(enum.Flag):
+    ENABLE = 1 << 0
+    MASK = 1 << 8
+    ADDR_64 = 1 << 7
+
+    @classmethod
+    def _missing_(cls, value):
+        # Allow any integer value, even with unknown bits
+        pseudo_member = object.__new__(cls)
+        pseudo_member._name_ = f"MSIFlags({value})"
+        pseudo_member._value_ = value
+        return pseudo_member
+
+#         Capabilities: [68] MSI: Enable- Count=1/1 Maskable- 64bit+
+#                Address: 0000000000000000  Data: 0000
+
+@dataclass(frozen=True)
+class Cap_MSI:
+    flags_raw: int
+    qsize: int
+    qmask: int
+    addr: int
+    data: int
+    mask: int
+    pending: int
+
+    @property
+    def has_details(self): return True
+
+    @property
+    def flags(self) -> MSIFlags:
+        return MSIFlags(self.flags_raw)
+
+    @property
+    def name(self) -> str:
+        flags = self.flags
+        formatted = (
+            f"MSI: "
+            f"Enable{flag_char(flags, MSIFlags.ENABLE)} "
+            f"Count={self.qsize}/{self.qmask} "
+            f"Maskable{flag_char(flags, MSIFlags.MASK)} "
+            f"64bit{flag_char(flags, MSIFlags.ADDR_64)}"
+        )
+        return formatted
+
+    def __str__(self) -> str:
+        flags = self.flags
+        formatted_addr = f"{self.addr:016x}" if flags & MSIFlags.ADDR_64 else f"{self.addr:08x}"
+        formatted = (
+                f"\t\tAddress: {formatted_addr} "
+                f"Data: {self.data:04x}"
+        )
+        if flags & MSIFlags.MASK:
+            formatted += f"\n\t\tMasking: {self.mask:08x}  Pending: {self.pending:08x}"
+        return formatted
+
+def decode_msi(raw: bytes, flags_raw: int):
+    flags = MSIFlags(flags_raw)
+    is64 = flags & MSIFlags.ADDR_64
+    qsize = 1 << ((flags_raw & 0x70) >> 4)
+    qmask = 1 << ((flags_raw & 0x0e) >> 1)
+    mask = 0
+    pending = 0
+    if is64:
+        addr = _u32(raw, 4) | (_u32(raw, 8) << 32)
+        data = _u16(raw, 12)
+        if flags & MSIFlags.MASK:
+            mask = _u32(raw, 16)
+            pending = _u32(raw, 20)
+    else:
+        addr = _u32(raw, 4)
+        data = _u16(raw, 8)
+        if flags & MSIFlags.MASK:
+            mask = _u32(raw, 12)
+            pending = _u32(raw, 16)
+    decoded = Cap_MSI(
+        flags_raw=flags_raw,
+        qsize=qsize,
+        qmask=qmask,
+        addr=addr,
+        data=data,
+        mask=mask,
+        pending=pending,
+    )
+    return raw, decoded
+
+ClassicDecoders[PciCapID.MSI] = decode_msi
 
 
 class AERUncorrectableError(enum.Flag):
@@ -270,9 +480,6 @@ class AERUncorrectableError(enum.Flag):
     PCRC_CHECK = 1 << 30
     TLP_XLAT_EGRESS_BLOCKED = 1 << 31
 
-    def flag_char(self, bit: AERUncorrectableError) -> str:
-        return '+' if self & bit else '-'
-
     @classmethod
     def _missing_(cls, value):
         # Allow any integer value, even with unknown bits
@@ -283,28 +490,28 @@ class AERUncorrectableError(enum.Flag):
 
     def __str__(self) -> str:
         formatted = (
-            f"DLP{self.flag_char(AERUncorrectableError.DLP)} "
-            f"SDES{self.flag_char(AERUncorrectableError.SDES)} "
-            f"TLP{self.flag_char(AERUncorrectableError.POISON_TLP)} "
-            f"FCP{self.flag_char(AERUncorrectableError.FCP)} "
-            f"CmpltTO{self.flag_char(AERUncorrectableError.COMP_TIME)} "
-            f"CmpltAbrt{self.flag_char(AERUncorrectableError.COMP_ABORT)} "
-            f"UnxCmplt{self.flag_char(AERUncorrectableError.UNX_COMP)} "
-            f"RxOF{self.flag_char(AERUncorrectableError.RX_OVER)} "
-            f"MalfTLP{self.flag_char(AERUncorrectableError.MALF_TLP)}\n\t\t\t"
-            f"ECRC{self.flag_char(AERUncorrectableError.ECRC)} "
-            f"UnsupReq{self.flag_char(AERUncorrectableError.UNSUP)} "
-            f"ACSViol{self.flag_char(AERUncorrectableError.ACS_VIOL)} "
-            f"UncorrIntErr{self.flag_char(AERUncorrectableError.INTERNAL)} "
-            f"BlockedTLP{self.flag_char(AERUncorrectableError.MC_BLOCKED_TLP)} "
-            f"AtomicOpBlocked{self.flag_char(AERUncorrectableError.ATOMICOP_EGRESS_BLOCKED)} "
-            f"TLPBlockedErr{self.flag_char(AERUncorrectableError.TLP_PREFIX_BLOCKED)}\n\t\t\t"
-            f"PoisonTLPBlocked{self.flag_char(AERUncorrectableError.POISONED_TLP_EGRESS)} "
-            f"DMWrReqBlocked{self.flag_char(AERUncorrectableError.DMWR_REQ_EGRESS_BLOCKED)} "
-            f"IDECheck{self.flag_char(AERUncorrectableError.IDE_CHECK)} "
-            f"MisIDETLP{self.flag_char(AERUncorrectableError.MISR_IDE_TLP)} "
-            f"PCRC_CHECK{self.flag_char(AERUncorrectableError.PCRC_CHECK)} "
-            f"TLPXlatBlocked{self.flag_char(AERUncorrectableError.TLP_XLAT_EGRESS_BLOCKED)}\n"
+            f"DLP{flag_char(self, AERUncorrectableError.DLP)} "
+            f"SDES{flag_char(self, AERUncorrectableError.SDES)} "
+            f"TLP{flag_char(self, AERUncorrectableError.POISON_TLP)} "
+            f"FCP{flag_char(self, AERUncorrectableError.FCP)} "
+            f"CmpltTO{flag_char(self, AERUncorrectableError.COMP_TIME)} "
+            f"CmpltAbrt{flag_char(self, AERUncorrectableError.COMP_ABORT)} "
+            f"UnxCmplt{flag_char(self, AERUncorrectableError.UNX_COMP)} "
+            f"RxOF{flag_char(self, AERUncorrectableError.RX_OVER)} "
+            f"MalfTLP{flag_char(self, AERUncorrectableError.MALF_TLP)}\n\t\t\t"
+            f"ECRC{flag_char(self, AERUncorrectableError.ECRC)} "
+            f"UnsupReq{flag_char(self, AERUncorrectableError.UNSUP)} "
+            f"ACSViol{flag_char(self, AERUncorrectableError.ACS_VIOL)} "
+            f"UncorrIntErr{flag_char(self, AERUncorrectableError.INTERNAL)} "
+            f"BlockedTLP{flag_char(self, AERUncorrectableError.MC_BLOCKED_TLP)} "
+            f"AtomicOpBlocked{flag_char(self, AERUncorrectableError.ATOMICOP_EGRESS_BLOCKED)} "
+            f"TLPBlockedErr{flag_char(self, AERUncorrectableError.TLP_PREFIX_BLOCKED)}\n\t\t\t"
+            f"PoisonTLPBlocked{flag_char(self, AERUncorrectableError.POISONED_TLP_EGRESS)} "
+            f"DMWrReqBlocked{flag_char(self, AERUncorrectableError.DMWR_REQ_EGRESS_BLOCKED)} "
+            f"IDECheck{flag_char(self, AERUncorrectableError.IDE_CHECK)} "
+            f"MisIDETLP{flag_char(self, AERUncorrectableError.MISR_IDE_TLP)} "
+            f"PCRC_CHECK{flag_char(self, AERUncorrectableError.PCRC_CHECK)} "
+            f"TLPXlatBlocked{flag_char(self, AERUncorrectableError.TLP_XLAT_EGRESS_BLOCKED)}\n"
         )
         return formatted
 
@@ -318,9 +525,6 @@ class AERCorrectableError(enum.Flag):
     INTERNAL = 1 << 14
     HDRLOG_OVER = 1 << 15
 
-    def flag_char(self, bit: AERCorrectableError) -> str:
-        return '+' if self & bit else '-'
-
     @classmethod
     def _missing_(cls, value):
         # Allow any integer value, even with unknown bits
@@ -331,14 +535,14 @@ class AERCorrectableError(enum.Flag):
 
     def __str__(self) -> str:
         formatted = (
-            f"RxErr{self.flag_char(AERCorrectableError.RCVR)} "
-            f"BadTLP{self.flag_char(AERCorrectableError.BAD_TLP)} "
-            f"BadDLLP{self.flag_char(AERCorrectableError.BAD_DLLP)} "
-            f"Rollover{self.flag_char(AERCorrectableError.REP_ROLL)} "
-            f"Timeout{self.flag_char(AERCorrectableError.REP_TIMER)} "
-            f"AdvNonFatalErr{self.flag_char(AERCorrectableError.REP_ANFE)} "
-            f"CorrIntErr{self.flag_char(AERCorrectableError.INTERNAL)} "
-            f"HeaderOF{self.flag_char(AERCorrectableError.HDRLOG_OVER)}\n"
+            f"RxErr{flag_char(self, AERCorrectableError.RCVR)} "
+            f"BadTLP{flag_char(self, AERCorrectableError.BAD_TLP)} "
+            f"BadDLLP{flag_char(self, AERCorrectableError.BAD_DLLP)} "
+            f"Rollover{flag_char(self, AERCorrectableError.REP_ROLL)} "
+            f"Timeout{flag_char(self, AERCorrectableError.REP_TIMER)} "
+            f"AdvNonFatalErr{flag_char(self, AERCorrectableError.REP_ANFE)} "
+            f"CorrIntErr{flag_char(self, AERCorrectableError.INTERNAL)} "
+            f"HeaderOF{flag_char(self, AERCorrectableError.HDRLOG_OVER)}\n"
         )
         return formatted
 
@@ -351,9 +555,6 @@ class AERCapability(enum.Flag):
     MULT_HDRE = 1 << 10
     TLP_PFX = 1 << 11
     HDR_LOG = 1 << 12
-
-    def flag_char(self, bit: AERCapability) -> str:
-        return '+' if self & bit else '-'
 
     @classmethod
     def _missing_(cls, value):
@@ -370,14 +571,14 @@ class AERCapability(enum.Flag):
     def __str__(self) -> str:
         formatted = (
             f"First Error Pointer: {self.first_error_pointer:02x}, "
-            f"ECRCGenCap{self.flag_char(AERCapability.ECRC_GENC)} "
-            f"ECRCGenEn{self.flag_char(AERCapability.ECRC_GENE)} "
-            f"ECRCChkCap{self.flag_char(AERCapability.ECRC_CHKC)} "
-            f"ECRCChkEn{self.flag_char(AERCapability.ECRC_CHKE)}\n\t\t\t"
-            f"MultHdrRecCap{self.flag_char(AERCapability.MULT_HDRC)} "
-            f"MultHdrRecEn{self.flag_char(AERCapability.MULT_HDRE)} "
-            f"TLPPfxPres{self.flag_char(AERCapability.TLP_PFX)} "
-            f"HdrLogCap{self.flag_char(AERCapability.HDR_LOG)}\n"
+            f"ECRCGenCap{flag_char(self, AERCapability.ECRC_GENC)} "
+            f"ECRCGenEn{flag_char(self, AERCapability.ECRC_GENE)} "
+            f"ECRCChkCap{flag_char(self, AERCapability.ECRC_CHKC)} "
+            f"ECRCChkEn{flag_char(self, AERCapability.ECRC_CHKE)}\n\t\t\t"
+            f"MultHdrRecCap{flag_char(self, AERCapability.MULT_HDRC)} "
+            f"MultHdrRecEn{flag_char(self, AERCapability.MULT_HDRE)} "
+            f"TLPPfxPres{flag_char(self, AERCapability.TLP_PFX)} "
+            f"HdrLogCap{flag_char(self, AERCapability.HDR_LOG)}\n"
         )
         return formatted
 
@@ -390,6 +591,9 @@ class ExtCap_AER:
     cor_mask_raw: int
     err_cap_raw: int
     hdr_log: Tuple[int, int, int, int]
+
+    @property
+    def has_details(self): return True
 
     @property
     def uncor_status(self) -> AERUncorrectableError:
@@ -414,6 +618,10 @@ class ExtCap_AER:
     @property
     def err_cap(self) -> AERCapability:
         return AERCapability(self.err_cap_raw)
+
+    @property
+    def name(self) -> str:
+        return "Advanced Error Reporting"
 
     def __str__(self) -> str:
         formatted = (
@@ -454,6 +662,17 @@ class ExtCap_VNDR:
     vid: int
     rev: int
     length: int
+
+    @property
+    def has_details(self): return False
+
+    @property
+    def name(self):
+        formatted = (
+            f"Vendor Specific Information: "
+            f"Len={self.length:02x} <?>"
+        )
+        return formatted
 
 def decode_ext_vndr(raw: bytes, ver: int):
     PCI_EVNDR_HEADER = 4
@@ -542,11 +761,12 @@ def _parse_classic_caps(cfg: bytes) -> List[ClassicCapRecord]:
             break  # loop protection
         seen.add(ptr)
 
-        if ptr + 2 > len(cfg):  # need at least cap_id + next_ptr
+        if ptr + 4 > len(cfg):  # need at least cap_id + next_ptr + flags
             break
 
         cap_id = _u8(cfg, ptr)
-        next_ptr = _u8(cfg, ptr + 1)
+        next_ptr = _u8(cfg, ptr + 1) & ~3
+        flags = _u16(cfg, ptr + 2)
 
         # Compute a safe slice for raw: from ptr up to next_ptr (if sane), else to 0x100.
         if _valid_ptr(next_ptr) and next_ptr > ptr:
@@ -559,12 +779,8 @@ def _parse_classic_caps(cfg: bytes) -> List[ClassicCapRecord]:
 
         # Future: decode if registered
         decoded = None
-        decoder = ClassicDecoders.get(cap_id)
-        if decoder:
-            try:
-                decoded = decoder(cfg, ptr)
-            except Exception:
-                decoded = None  # keep robust; raw always preserved
+        decoder = ClassicDecoders.get(cap_id, decode_generic)
+        raw, decoded = decoder(raw, flags)
 
         out.append(
             ClassicCapRecord(
@@ -700,10 +916,16 @@ if __name__ == "__main__":
 
     for c in parsed.classic:
         name = cap_long_name(c.cap_id_enum) if c.cap_id_enum else f"0x{c.cap_id:02x}"
-        print(f"  Capabilities: [{c.offset:02x}]: {name}  (len={len(c.raw):x})")
+        if getattr(c.decoded, "name", None):
+            name = c.decoded.name
+        print(f"  Capabilities: [{c.offset:02x}]: {name}")
+        if c.decoded is not None and c.decoded.has_details:
+            print(c.decoded)
 
     for e in parsed.extended:
         name = extcap_long_name(e.ext_id_enum) if e.ext_id_enum else f"0x{e.ext_id:04x}"
-        print(f"  Capabilities: [{e.offset:03x} v{e.version}]: {name}  (len={len(e.raw):x})")
-        if e.decoded is not None:
+        if getattr(e.decoded, "name", None):
+            name = e.decoded.name
+        print(f"  Capabilities: [{e.offset:03x} v{e.version}]: {name}")
+        if e.decoded is not None and e.decoded.has_details:
             print(e.decoded)
