@@ -685,6 +685,86 @@ def decode_ext_vndr(raw: bytes, ver: int):
     return raw[:decoded.length], decoded
 ExtDecoders[PciExtCapID.VNDR] = decode_ext_vndr
 
+@dataclass(frozen=True)
+class REBAR_Entry:
+    index: int
+
+    # Current size in MB
+    current_size: int
+
+    # Supported sizes in MB
+    supported_sizes: List[int]
+
+def format_rebar_range_size(size_bytes):
+    if (1 << 0) <= size_bytes < (1 << 10):
+        return f"{size_bytes}MB"
+    elif (1 << 10) <= size_bytes < (1 << 20):
+        return f"{(size_bytes >> 10)}GB"
+    elif (1 << 20) <= size_bytes < (1 << 30):
+        return f"{(size_bytes >> 20)}TB"
+    elif (1 << 30) <= size_bytes < (1 << 40):
+        return f"{(size_bytes >> 30)}PB"
+    elif (1 << 40) <= size_bytes < (1 << 44):
+        return f"{(size_bytes >> 40)}EB"
+    else:
+        return "<unknown>"
+
+def calc_rebar_range_size(ld2_size):
+    return 1 << ld2_size
+
+@dataclass(frozen=True)
+class ExtCap_REBAR:
+    bars: List[REBAR_Entry]
+
+    @property
+    def has_details(self): return True
+
+    @property
+    def name(self):
+        return "Physical Resizable BAR"
+
+    def __str__(self) -> str:
+        formatted = []
+        for bar in self.bars:
+            supported_fmt = ' '.join([format_rebar_range_size(x) for x in bar.supported_sizes])
+            current_size = format_rebar_range_size(bar.current_size)
+            formatted.append(f"\t\tBAR {bar.index}: current size: {current_size}, supported: {supported_fmt}")
+        return '\n'.join(formatted)
+
+def decode_ext_rebar(raw: bytes, ver: int):
+    bars: List[REBAR_Entry] = []
+    num_bars = 1
+    offset = 0
+    while len(bars) < num_bars:
+        offset += 4
+        sizes_buffer = _u32(raw, offset) >> 4
+        offset += 4
+        control_buffer = _u32(raw, offset)
+        bar_index = (control_buffer >> 0) & 0x7
+        current_size = (control_buffer >> 8) & 0x3F
+        ext_sizes = (control_buffer >> 16) & 0xFFFF
+
+        if len(bars) == 0:
+            num_bars = (control_buffer >> 5) & 0x7
+            if num_bars < 1 or num_bars > 6:
+                raise ValueError("BAR count out of bounds")
+
+        sizes = []
+        if sizes_buffer or ext_sizes:
+            sizes += [calc_rebar_range_size(x) for x in range(28) if (sizes_buffer & (1 << x))]
+            sizes += [calc_rebar_range_size(x + 28) for x in range(16) if (ext_sizes & (1 << x))]
+        bars.append(
+            REBAR_Entry(
+                index=bar_index,
+                current_size=calc_rebar_range_size(current_size),
+                supported_sizes=sizes
+            )
+        )
+
+    decoded = ExtCap_REBAR(bars=bars)
+    return raw, decoded
+ExtDecoders[PciExtCapID.REBAR] = decode_ext_rebar
+
 # Register future decoders like:
 # ClassicDecoders[PciCapID.MSI] = decode_msi
 # ExtDecoders[PciExtCapID.SRIOV] = decode_sriov
@@ -918,7 +998,7 @@ if __name__ == "__main__":
         name = cap_long_name(c.cap_id_enum) if c.cap_id_enum else f"0x{c.cap_id:02x}"
         if getattr(c.decoded, "name", None):
             name = c.decoded.name
-        print(f"  Capabilities: [{c.offset:02x}]: {name}")
+        print(f"\tCapabilities: [{c.offset:02x}]: {name}")
         if c.decoded is not None and c.decoded.has_details:
             print(c.decoded)
 
@@ -926,6 +1006,6 @@ if __name__ == "__main__":
         name = extcap_long_name(e.ext_id_enum) if e.ext_id_enum else f"0x{e.ext_id:04x}"
         if getattr(e.decoded, "name", None):
             name = e.decoded.name
-        print(f"  Capabilities: [{e.offset:03x} v{e.version}]: {name}")
+        print(f"\tCapabilities: [{e.offset:03x} v{e.version}]: {name}")
         if e.decoded is not None and e.decoded.has_details:
             print(e.decoded)
