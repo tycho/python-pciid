@@ -12,6 +12,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 
 class PciCapID(enum.IntEnum):
+    # fmt: off
     NULL     =  0x00
     PM       =  0x01
     AGP      =  0x02
@@ -34,9 +35,11 @@ class PciCapID(enum.IntEnum):
     AF       =  0x13
     EA       =  0x14
     FPB      =  0x15
+    # fmt: on
 
 
 CAP_NAMES: dict[PciCapID, Tuple[str, str]] = {
+    # fmt: off
     PciCapID.PM: ("Power Management", "Power Management Capability"),
     PciCapID.AGP: ("AGP", "Accelerated Graphics Port"),
     PciCapID.VPD: ("VPD", "Vital Product Data"),
@@ -55,6 +58,7 @@ CAP_NAMES: dict[PciCapID, Tuple[str, str]] = {
     PciCapID.MSIX: ("MSI-X", "Message Signaled Interrupts eXtended"),
     PciCapID.SATA: ("SATA", "Serial ATA Capability"),
     PciCapID.AF: ("AF", "Advanced Features"),
+    # fmt: on
 }
 
 
@@ -71,10 +75,13 @@ def cap_long_name(capid: PciCapID) -> Optional[str]:
         return f"Unknown 0x{capid:04x}"
     return long
 
+
 def flag_char(flags: enum.Flag, bit: enum.Flag) -> str:
-    return '+' if flags & bit else '-'
+    return "+" if flags & bit else "-"
+
 
 class PciExtCapID(enum.IntEnum):
+    # fmt: off
     NULL           =  0x0000
     AER            =  0x0001
     VC             =  0x0002
@@ -131,9 +138,11 @@ class PciExtCapID(enum.IntEnum):
     SIOV           =  0x0038
     PL128GT        =  0x0039
     CAPT_D         =  0x003A
+    # fmt: on
 
 
 EXT_CAP_NAMES: dict[PciExtCapID, Tuple[str, str]] = {
+    # fmt: off
     PciExtCapID.AER: ("Advanced Error Reporting", "Advanced Error Reporting"),
     PciExtCapID.VC: ("Virtual Channel", "Virtual Channel"),
     PciExtCapID.DSN: ("Device Serial Number", "Device Serial Number"),
@@ -187,6 +196,7 @@ EXT_CAP_NAMES: dict[PciExtCapID, Tuple[str, str]] = {
     PciExtCapID.SIOV: ("SIOV", "Scalable I/O Virtualization"),
     PciExtCapID.PL128GT: ("Physical Layer 128.0 GT/s", "Physical Layer 128.0 GT/s"),
     PciExtCapID.CAPT_D: ("Captured Data", "Captured Data"),
+    # fmt: on
 }
 
 
@@ -214,7 +224,7 @@ class ClassicCapRecord:
     cap_id: int  # raw numeric ID (still provide the enum below)
     cap_id_enum: Optional[PciCapID]
     offset: int  # byte offset within config space
-    raw: bytes   # bytes from start of this cap up to start of next (or 0x100)
+    raw: bytes  # bytes from start of this cap up to start of next (or 0x100)
     decoded: Optional[object] = None
 
 
@@ -222,9 +232,9 @@ class ClassicCapRecord:
 class ExtCapRecord:
     ext_id: int  # raw numeric ID
     ext_id_enum: Optional[PciExtCapID]
-    version: int # 0..F
+    version: int  # 0..F
     offset: int  # byte offset (DWORD aligned)
-    raw: bytes   # bytes from this header up to next cap (or end)
+    raw: bytes  # bytes from this header up to next cap (or end)
     decoded: Optional[object] = None
 
 
@@ -243,22 +253,27 @@ DecodeResult = Tuple[bytes, object]
 ClassicDecoders: Dict[PciCapID, Callable[[bytes, int], DecodeResult]] = {}
 ExtDecoders: Dict[PciExtCapID, Callable[[bytes, int], DecodeResult]] = {}
 
+
 def decode_generic(raw: bytes, flags: int) -> DecodeResult:
     return raw, None
+
 
 def decode_ext_generic(raw: bytes, ver: int) -> DecodeResult:
     return raw, None
 
+
 class PMFlags(enum.Flag):
-    PME_CLOCK = 1 << 3
-    DSI = 1 << 5
-    D1 = 1 << 9
-    D2 = 1 << 10
-    PME_D0 = 1 << 11
-    PME_D1 = 1 << 12
-    PME_D2 = 1 << 13
-    PME_D3_HOT = 1 << 14
+    # fmt: off
+    PME_CLOCK   = 1 << 3
+    DSI         = 1 << 5
+    D1          = 1 << 9
+    D2          = 1 << 10
+    PME_D0      = 1 << 11
+    PME_D1      = 1 << 12
+    PME_D2      = 1 << 13
+    PME_D3_HOT  = 1 << 14
     PME_D3_COLD = 1 << 15
+    # fmt: on
 
     @classmethod
     def _missing_(cls, value):
@@ -268,10 +283,13 @@ class PMFlags(enum.Flag):
         pseudo_member._value_ = value
         return pseudo_member
 
+
 class PMStatusFlags(enum.Flag):
+    # fmt: off
     NO_SOFT_RST = 1 << 3
-    PME_ENABLE = 1 << 8
-    PME_STATUS = 1 << 15
+    PME_ENABLE  = 1 << 8
+    PME_STATUS  = 1 << 15
+    # fmt: on
 
     @classmethod
     def _missing_(cls, value):
@@ -280,6 +298,7 @@ class PMStatusFlags(enum.Flag):
         pseudo_member._name_ = f"PMStatusFlags({value})"
         pseudo_member._value_ = value
         return pseudo_member
+
 
 @dataclass(frozen=True)
 class PMStatus:
@@ -296,22 +315,24 @@ class PMStatus:
 
     @property
     def dsel(self) -> int:
-        return (self.raw & 0x1e00) >> 9
+        return (self.raw & 0x1E00) >> 9
 
     @property
     def dscale(self) -> int:
         return (self.raw & 0x6000) >> 13
+
 
 @dataclass(frozen=True)
 class Cap_PM:
     version: int
     flags_raw: int
     status: PMStatus
-    aux_current: int # mA
+    aux_current: int  # mA
     bridge_flags: int
 
     @property
-    def has_details(self): return True
+    def has_details(self):
+        return True
 
     @property
     def flags(self) -> PMFlags:
@@ -348,10 +369,11 @@ class Cap_PM:
         )
         return formatted
 
+
 def decode_pm(raw: bytes, flags: int) -> DecodeResult:
     pm_aux_current = (0, 55, 100, 160, 220, 270, 320, 375)
     version = flags & 0x7
-    aux_current = (flags & 0x1c0) >> 6
+    aux_current = (flags & 0x1C0) >> 6
 
     status = _u16(raw, 4)
     bridge_flags = _u8(raw, 6)
@@ -361,15 +383,20 @@ def decode_pm(raw: bytes, flags: int) -> DecodeResult:
         flags_raw=flags,
         aux_current=pm_aux_current[aux_current],
         status=PMStatus(raw=status),
-        bridge_flags=bridge_flags
+        bridge_flags=bridge_flags,
     )
     return raw, pm
+
+
 ClassicDecoders[PciCapID.PM] = decode_pm
 
+
 class MSIFlags(enum.Flag):
-    ENABLE = 1 << 0
-    MASK = 1 << 8
+    # fmt: off
+    ENABLE  = 1 << 0
+    MASK    = 1 << 8
     ADDR_64 = 1 << 7
+    # fmt: on
 
     @classmethod
     def _missing_(cls, value):
@@ -379,8 +406,10 @@ class MSIFlags(enum.Flag):
         pseudo_member._value_ = value
         return pseudo_member
 
+
 #         Capabilities: [68] MSI: Enable- Count=1/1 Maskable- 64bit+
 #                Address: 0000000000000000  Data: 0000
+
 
 @dataclass(frozen=True)
 class Cap_MSI:
@@ -393,7 +422,8 @@ class Cap_MSI:
     pending: int
 
     @property
-    def has_details(self): return True
+    def has_details(self):
+        return True
 
     @property
     def flags(self) -> MSIFlags:
@@ -413,20 +443,20 @@ class Cap_MSI:
 
     def __str__(self) -> str:
         flags = self.flags
-        formatted_addr = f"{self.addr:016x}" if flags & MSIFlags.ADDR_64 else f"{self.addr:08x}"
-        formatted = (
-                f"\t\tAddress: {formatted_addr} "
-                f"Data: {self.data:04x}"
+        formatted_addr = (
+            f"{self.addr:016x}" if flags & MSIFlags.ADDR_64 else f"{self.addr:08x}"
         )
+        formatted = f"\t\tAddress: {formatted_addr} " f"Data: {self.data:04x}"
         if flags & MSIFlags.MASK:
             formatted += f"\n\t\tMasking: {self.mask:08x}  Pending: {self.pending:08x}"
         return formatted
+
 
 def decode_msi(raw: bytes, flags_raw: int):
     flags = MSIFlags(flags_raw)
     is64 = flags & MSIFlags.ADDR_64
     qsize = 1 << ((flags_raw & 0x70) >> 4)
-    qmask = 1 << ((flags_raw & 0x0e) >> 1)
+    qmask = 1 << ((flags_raw & 0x0E) >> 1)
     mask = 0
     pending = 0
     if is64:
@@ -452,33 +482,36 @@ def decode_msi(raw: bytes, flags_raw: int):
     )
     return raw, decoded
 
+
 ClassicDecoders[PciCapID.MSI] = decode_msi
 
 
 class AERUncorrectableError(enum.Flag):
-    TRAIN = 1 << 0
-    DLP = 1 << 4
-    SDES = 1 << 5
-    POISON_TLP = 1 << 12
-    FCP = 1 << 13
-    COMP_TIME = 1 << 14
-    COMP_ABORT = 1 << 15
-    UNX_COMP = 1 << 16
-    RX_OVER = 1 << 17
-    MALF_TLP = 1 << 18
-    ECRC = 1 << 19
-    UNSUP = 1 << 20
-    ACS_VIOL = 1 << 21
-    INTERNAL = 1 << 22
-    MC_BLOCKED_TLP = 1 << 23
-    ATOMICOP_EGRESS_BLOCKED = 1 << 24
-    TLP_PREFIX_BLOCKED = 1 << 25
-    POISONED_TLP_EGRESS = 1 << 26
-    DMWR_REQ_EGRESS_BLOCKED = 1 << 27
-    IDE_CHECK = 1 << 28
-    MISR_IDE_TLP = 1 << 29
-    PCRC_CHECK = 1 << 30
-    TLP_XLAT_EGRESS_BLOCKED = 1 << 31
+    # fmt: off
+    TRAIN                    = 1 << 0
+    DLP                      = 1 << 4
+    SDES                     = 1 << 5
+    POISON_TLP               = 1 << 12
+    FCP                      = 1 << 13
+    COMP_TIME                = 1 << 14
+    COMP_ABORT               = 1 << 15
+    UNX_COMP                 = 1 << 16
+    RX_OVER                  = 1 << 17
+    MALF_TLP                 = 1 << 18
+    ECRC                     = 1 << 19
+    UNSUP                    = 1 << 20
+    ACS_VIOL                 = 1 << 21
+    INTERNAL                 = 1 << 22
+    MC_BLOCKED_TLP           = 1 << 23
+    ATOMICOP_EGRESS_BLOCKED  = 1 << 24
+    TLP_PREFIX_BLOCKED       = 1 << 25
+    POISONED_TLP_EGRESS      = 1 << 26
+    DMWR_REQ_EGRESS_BLOCKED  = 1 << 27
+    IDE_CHECK                = 1 << 28
+    MISR_IDE_TLP             = 1 << 29
+    PCRC_CHECK               = 1 << 30
+    TLP_XLAT_EGRESS_BLOCKED  = 1 << 31
+    # fmt: on
 
     @classmethod
     def _missing_(cls, value):
@@ -515,15 +548,18 @@ class AERUncorrectableError(enum.Flag):
         )
         return formatted
 
+
 class AERCorrectableError(enum.Flag):
-    RCVR = 1 << 0
-    BAD_TLP = 1 << 6
-    BAD_DLLP = 1 << 7
-    REP_ROLL = 1 << 8
-    REP_TIMER = 1 << 12
-    REP_ANFE = 1 << 13
-    INTERNAL = 1 << 14
-    HDRLOG_OVER = 1 << 15
+    # fmt: off
+    RCVR         = 1 << 0
+    BAD_TLP      = 1 << 6
+    BAD_DLLP     = 1 << 7
+    REP_ROLL     = 1 << 8
+    REP_TIMER    = 1 << 12
+    REP_ANFE     = 1 << 13
+    INTERNAL     = 1 << 14
+    HDRLOG_OVER  = 1 << 15
+    # fmt: on
 
     @classmethod
     def _missing_(cls, value):
@@ -546,15 +582,18 @@ class AERCorrectableError(enum.Flag):
         )
         return formatted
 
+
 class AERCapability(enum.Flag):
-    ECRC_GENC = 1 << 5
-    ECRC_GENE = 1 << 6
-    ECRC_CHKC = 1 << 7
-    ECRC_CHKE = 1 << 8
-    MULT_HDRC = 1 << 9
-    MULT_HDRE = 1 << 10
-    TLP_PFX = 1 << 11
-    HDR_LOG = 1 << 12
+    # fmt: off
+    ECRC_GENC  = 1 << 5
+    ECRC_GENE  = 1 << 6
+    ECRC_CHKC  = 1 << 7
+    ECRC_CHKE  = 1 << 8
+    MULT_HDRC  = 1 << 9
+    MULT_HDRE  = 1 << 10
+    TLP_PFX    = 1 << 11
+    HDR_LOG    = 1 << 12
+    # fmt: on
 
     @classmethod
     def _missing_(cls, value):
@@ -582,6 +621,7 @@ class AERCapability(enum.Flag):
         )
         return formatted
 
+
 @dataclass(frozen=True)
 class ExtCap_AER:
     uncor_status_raw: int
@@ -593,7 +633,8 @@ class ExtCap_AER:
     hdr_log: Tuple[int, int, int, int]
 
     @property
-    def has_details(self): return True
+    def has_details(self):
+        return True
 
     @property
     def uncor_status(self) -> AERUncorrectableError:
@@ -635,6 +676,7 @@ class ExtCap_AER:
         )
         return formatted
 
+
 def decode_ext_aer(raw: bytes, ver: int):
     uncor_status = _u32(raw, 4)
     uncor_mask = _u32(raw, 8)
@@ -655,7 +697,10 @@ def decode_ext_aer(raw: bytes, ver: int):
     )
 
     return raw, decoded
+
+
 ExtDecoders[PciExtCapID.AER] = decode_ext_aer
+
 
 @dataclass(frozen=True)
 class ExtCap_VNDR:
@@ -664,26 +709,26 @@ class ExtCap_VNDR:
     length: int
 
     @property
-    def has_details(self): return False
+    def has_details(self):
+        return False
 
     @property
     def name(self):
-        formatted = (
-            f"Vendor Specific Information: "
-            f"Len={self.length:02x} <?>"
-        )
+        formatted = f"Vendor Specific Information: " f"Len={self.length:02x} <?>"
         return formatted
+
 
 def decode_ext_vndr(raw: bytes, ver: int):
     PCI_EVNDR_HEADER = 4
     hdr = _u32(raw, PCI_EVNDR_HEADER)
     decoded = ExtCap_VNDR(
-        vid=((hdr >> 0) & 0xFFFF),
-        rev=((hdr >> 16) & 0xF),
-        length=((hdr >> 20) & 0xFFF)
+        vid=((hdr >> 0) & 0xFFFF), rev=((hdr >> 16) & 0xF), length=((hdr >> 20) & 0xFFF)
     )
-    return raw[:decoded.length], decoded
+    return raw[: decoded.length], decoded
+
+
 ExtDecoders[PciExtCapID.VNDR] = decode_ext_vndr
+
 
 @dataclass(frozen=True)
 class REBAR_Entry:
@@ -694,6 +739,7 @@ class REBAR_Entry:
 
     # Supported sizes in MB
     supported_sizes: List[int]
+
 
 def format_rebar_range_size(size_bytes):
     if (1 << 0) <= size_bytes < (1 << 10):
@@ -709,15 +755,18 @@ def format_rebar_range_size(size_bytes):
     else:
         return "<unknown>"
 
+
 def calc_rebar_range_size(ld2_size):
     return 1 << ld2_size
+
 
 @dataclass(frozen=True)
 class ExtCap_REBAR:
     bars: List[REBAR_Entry]
 
     @property
-    def has_details(self): return True
+    def has_details(self):
+        return True
 
     @property
     def name(self):
@@ -726,10 +775,15 @@ class ExtCap_REBAR:
     def __str__(self) -> str:
         formatted = []
         for bar in self.bars:
-            supported_fmt = ' '.join([format_rebar_range_size(x) for x in bar.supported_sizes])
+            supported_fmt = " ".join(
+                [format_rebar_range_size(x) for x in bar.supported_sizes]
+            )
             current_size = format_rebar_range_size(bar.current_size)
-            formatted.append(f"\t\tBAR {bar.index}: current size: {current_size}, supported: {supported_fmt}")
-        return '\n'.join(formatted)
+            formatted.append(
+                f"\t\tBAR {bar.index}: current size: {current_size}, supported: {supported_fmt}"
+            )
+        return "\n".join(formatted)
+
 
 def decode_ext_rebar(raw: bytes, ver: int):
     bars: List[REBAR_Entry] = []
@@ -751,18 +805,26 @@ def decode_ext_rebar(raw: bytes, ver: int):
 
         sizes = []
         if sizes_buffer or ext_sizes:
-            sizes += [calc_rebar_range_size(x) for x in range(28) if (sizes_buffer & (1 << x))]
-            sizes += [calc_rebar_range_size(x + 28) for x in range(16) if (ext_sizes & (1 << x))]
+            sizes += [
+                calc_rebar_range_size(x) for x in range(28) if (sizes_buffer & (1 << x))
+            ]
+            sizes += [
+                calc_rebar_range_size(x + 28)
+                for x in range(16)
+                if (ext_sizes & (1 << x))
+            ]
         bars.append(
             REBAR_Entry(
                 index=bar_index,
                 current_size=calc_rebar_range_size(current_size),
-                supported_sizes=sizes
+                supported_sizes=sizes,
             )
         )
 
     decoded = ExtCap_REBAR(bars=bars)
     return raw, decoded
+
+
 ExtDecoders[PciExtCapID.REBAR] = decode_ext_rebar
 
 # Register future decoders like:
